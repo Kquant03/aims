@@ -1,0 +1,48 @@
+# Core AI/ML Dependencies
+anthropic>=0.25.0,<1.0.0
+openai>=1.0.0,<2.0.0
+numpy>=1.24.0,<1.26.0
+transformers>=4.36.0,<5.0.0
+
+# Memory and Vector Storage
+mem0ai>=0.0.5
+redis>=5.0.0,<6.0.0
+psycopg2-binary>=2.9.0,<3.0.0
+pgvector>=0.2.0,<1.0.0
+qdrant-client>=1.7.0,<2.0.0
+
+# Graph Database
+neo4j>=5.0.0,<6.0.0
+
+# Web Framework and Async
+aiohttp>=3.9.0,<4.0.0
+aiohttp-cors>=0.7.0
+aiohttp-session>=2.12.0
+cryptography>=41.0.0  # Added this!
+aiohttp-jinja2>=1.5.0
+aiofiles>=23.0.0,<24.0.0
+websockets>=12.0.0,<13.0.0
+jinja2>=3.1.0,<4.0.0
+
+# Configuration and Utilities
+pyyaml>=6.0.0,<7.0.0
+python-dotenv>=1.0.0,<2.0.0
+click>=8.1.0,<9.0.0
+colorlog>=6.8.0,<7.0.0
+
+# Data Processing
+pandas>=2.0.0,<3.0.0
+scikit-learn>=1.3.0,<2.0.0
+
+# System Monitoring
+psutil>=5.9.0,<6.0.0
+pynvml>=11.5.0
+
+# Development Tools
+pytest>=7.4.0,<8.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+black>=23.0.0,<24.0.0
+flake8>=6.1.0,<7.0.0
+
+# any missing imports can be added here if debugging on your machine - for instance we forgot aioboto3 during early development
+aioboto3

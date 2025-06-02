@@ -1,0 +1,74 @@
+# configs/default_config.yaml
+# AIMS Default Configuration
+system:
+  name: "AIMS"
+  version: "1.0.0"
+  
+consciousness:
+  cycle_frequency: 2.0  # Hz (2 cycles per second)
+  working_memory_size: 7
+  coherence_threshold: 0.7
+  
+memory:
+  consolidation_threshold: 0.3
+  redis_host: ${REDIS_HOST:-localhost}
+  redis_port: ${REDIS_PORT:-6379}
+  pg_host: ${POSTGRES_HOST:-localhost}
+  pg_port: ${POSTGRES_PORT:-5432}
+  pg_database: ${POSTGRES_DB:-aims_memory}
+  pg_user: ${POSTGRES_USER:-aims}
+  pg_password: ${POSTGRES_PASSWORD:-aims_password}
+  qdrant_host: ${QDRANT_HOST:-localhost}
+  qdrant_port: ${QDRANT_PORT:-6333}
+  
+personality:
+  # OCEAN traits (0-1 scale)
+  initial_traits:
+    openness: 0.8
+    conscientiousness: 0.7
+    extraversion: 0.6
+    agreeableness: 0.8
+    neuroticism: 0.3
+  
+  # Evolution parameters
+  learning_rate: 0.001
+  momentum: 0.95
+  
+emotions:
+  # PAD baseline state
+  baseline:
+    pleasure: 0.6
+    arousal: 0.5
+    dominance: 0.5
+  
+  # Transition parameters
+  transition_speed: 0.1
+  baseline_pull: 0.05
+  inertia: 0.7
+  
+state_management:
+  state_path: data/states
+  backup_path: data/backups
+  backup_interval_hours: 6
+  max_local_backups: 7
+  compression: true
+  
+  # S3 backup configuration (optional)
+  s3_backup:
+    enabled: ${S3_BACKUP_ENABLED:-false}
+    bucket: ${S3_BUCKET:-}
+    access_key: ${S3_ACCESS_KEY:-}
+    secret_key: ${S3_SECRET_KEY:-}
+    region: ${S3_REGION:-us-east-1}
+    
+api:
+  claude:
+    model: "claude-3-sonnet-20240229"
+    max_tokens: 4096
+    temperature_base: 0.7
+    
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  file: logs/aims.log
+  max_size: 100MB
+  backup_count: 5
