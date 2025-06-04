@@ -278,9 +278,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [API Documentation](docs/API.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [Architecture Details](docs/ARCHITECTURE.md)
-
-## 📞 Support
-
-- GitHub Issues: [Report bugs or request features](https://github.com/yourusername/aims/issues)
-- Documentation: [Full documentation](https://aims-docs.readthedocs.io)
-- Community: [Discord server](https://discord.gg/aims)
