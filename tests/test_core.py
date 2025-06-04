@@ -1,225 +1,131 @@
-# test_core.py - Core System Tests
+# tests/test_core.py - Comprehensive core functionality tests
 import pytest
 import asyncio
 import torch
+import numpy as np
+from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
-import json
-import tempfile
+import sys
 from pathlib import Path
 
-from src.core.consciousness import ConsciousnessCore, ConsciousnessState
-from src.core.memory_manager import PersistentMemoryManager, MemoryItem
-from src.core.personality import PersonalityEngine, PersonalityProfile
-from src.core.emotional_engine import EmotionalEngine, EmotionalState
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.core.consciousness import ConsciousnessCore, ConsciousnessState
+from src.core.emotional_engine import EmotionalEngine, EmotionalState
+from src.core.personality import PersonalityEngine, PersonalityProfile
+from src.core.memory_manager import AdvancedMemoryManager, MemoryItem
+
+# Async fixtures
+@pytest.fixture
+async def consciousness_core():
+    """Async fixture for consciousness core"""
+    config = {
+        'cycle_frequency': 10.0,  # Fast for testing
+        'working_memory_size': 5,
+        'coherence_threshold': 0.7
+    }
+    core = ConsciousnessCore(config)
+    yield core
+    core.shutdown()
+
+@pytest.fixture
+async def emotional_engine():
+    """Async fixture for emotional engine"""
+    return EmotionalEngine()
+
+@pytest.fixture
+async def personality_engine():
+    """Async fixture for personality engine"""
+    return PersonalityEngine()
+
+@pytest.fixture
+async def memory_manager():
+    """Async fixture for memory manager"""
+    config = {
+        'embedding_dim': 768,
+        'max_memories': 1000,
+        'use_gpu': False  # CPU for testing
+    }
+    return AdvancedMemoryManager(config)
 
 class TestConsciousnessCore:
     """Test consciousness core functionality"""
     
-    @pytest.fixture
-    def consciousness(self):
-        config = {
-            'cycle_frequency': 10.0,  # Fast for testing
-            'working_memory_size': 5,
-            'coherence_threshold': 0.7
-        }
-        return ConsciousnessCore(config)
+    @pytest.mark.asyncio
+    async def test_initialization(self, consciousness_core):
+        """Test consciousness core initialization"""
+        assert consciousness_core.state is not None
+        assert consciousness_core.state.global_coherence == 1.0
+        assert len(consciousness_core.memory_buffer) == 0
+        assert consciousness_core.cycle_frequency == 10.0
     
-    def test_initialization(self, consciousness):
-        """Test consciousness initialization"""
-        assert consciousness.state is not None
-        assert consciousness.state.global_coherence == 1.0
-        assert len(consciousness.state.working_memory) == 0
-        assert consciousness.cycle_frequency == 10.0
+    @pytest.mark.asyncio
+    async def test_consciousness_loop(self, consciousness_core):
+        """Test consciousness processing loop"""
+        # Run loop for short duration
+        loop_task = asyncio.create_task(consciousness_core.consciousness_loop())
+        
+        # Let it run for 0.5 seconds
+        await asyncio.sleep(0.5)
+        
+        # Should have completed several cycles
+        assert consciousness_core._running
+        
+        # Shutdown
+        consciousness_core.shutdown()
+        await loop_task
+        
+        assert not consciousness_core._running
     
-    def test_process_input(self, consciousness):
+    @pytest.mark.asyncio
+    async def test_process_input(self, consciousness_core):
         """Test input processing"""
-        consciousness.process_input("Hello, world!", {'test': True})
+        initial_count = consciousness_core.state.interaction_count
         
-        assert consciousness.state.interaction_count == 1
-        assert len(consciousness.memory_buffer) == 1
-        assert consciousness.state.last_interaction is not None
-    
-    @pytest.mark.asyncio
-    async def test_consciousness_loop(self, consciousness):
-        """Test consciousness loop execution"""
-        # Run for a short time
-        task = asyncio.create_task(consciousness.consciousness_loop())
-        await asyncio.sleep(0.3)  # 3 cycles at 10Hz
-        
-        consciousness.shutdown()
-        await task
-        
-        # Should have processed some cycles
-        assert consciousness.state.timestamp != consciousness._initialize_state().timestamp
-    
-    def test_coherence_calculation(self, consciousness):
-        """Test coherence calculation"""
-        # Add some memories
-        for i in range(3):
-            consciousness.process_input(f"Memory {i}")
-        
-        consciousness._calculate_coherence()
-        
-        assert 0 <= consciousness.state.global_coherence <= 1.0
-    
-    def test_state_serialization(self, consciousness):
-        """Test state serialization and deserialization"""
-        # Process some inputs
-        consciousness.process_input("Test input")
-        
-        # Serialize
-        state_dict = consciousness.state.to_dict()
-        
-        # Deserialize
-        restored_state = ConsciousnessState.from_dict(state_dict)
-        
-        assert restored_state.interaction_count == consciousness.state.interaction_count
-        assert restored_state.attention_focus == consciousness.state.attention_focus
-
-
-class TestMemoryManager:
-    """Test memory management functionality"""
-    
-    @pytest.fixture
-    async def memory_manager(self):
-        config = {
-            'redis_host': 'localhost',
-            'redis_port': 6379,
-            'pg_host': 'localhost',
-            'pg_port': 5432,
-            'pg_database': 'test_aims_memory',
-            'pg_user': 'test_user',
-            'pg_password': 'test_password',
-            'qdrant_host': 'localhost',
-            'qdrant_port': 6333
-        }
-        
-        # Note: This requires test databases to be running
-        # In practice, you might use test containers or mocks
-        return PersistentMemoryManager(config)
-    
-    @pytest.mark.asyncio
-    async def test_store_memory(self, memory_manager):
-        """Test memory storage"""
-        memory_id = await memory_manager.store_memory(
-            content="This is a test memory",
-            context={
-                'user_id': 'test_user',
-                'emotional_state': {
-                    'pleasure': 0.7,
-                    'arousal': 0.5,
-                    'dominance': 0.6
-                },
-                'importance': 0.8
-            }
-        )
-        
-        assert memory_id is not None
-        assert len(memory_id) == 16  # SHA256 truncated
-    
-    @pytest.mark.asyncio
-    async def test_retrieve_memories(self, memory_manager):
-        """Test memory retrieval"""
-        # Store some memories
-        memory_ids = []
-        for i in range(5):
-            memory_id = await memory_manager.store_memory(
-                content=f"Test memory {i}",
-                context={'user_id': 'test_user', 'importance': 0.5 + i * 0.1}
-            )
-            memory_ids.append(memory_id)
-        
-        # Retrieve memories
-        memories = await memory_manager.retrieve_memories("test memory", k=3)
-        
-        assert len(memories) <= 3
-        assert all(isinstance(m, MemoryItem) for m in memories)
-    
-    def test_memory_salience_calculation(self):
-        """Test memory salience calculation"""
-        memory = MemoryItem(
-            id="test_id",
-            content="Test content",
-            timestamp=datetime.now(),
-            importance=0.8,
-            emotional_context={'pleasure': 0.9, 'arousal': 0.7, 'dominance': 0.5},
-            associations=[],
-            decay_rate=0.1
-        )
-        
-        current_time = datetime.now()
-        salience = memory.calculate_salience(current_time)
-        
-        assert 0 <= salience <= 1.5  # Can be slightly above 1 due to emotional boost
-
-
-class TestPersonalityEngine:
-    """Test personality system"""
-    
-    @pytest.fixture
-    def personality_engine(self):
-        return PersonalityEngine()
-    
-    def test_trait_initialization(self, personality_engine):
-        """Test personality trait initialization"""
-        traits = personality_engine.profile.get_traits()
-        
-        assert 'openness' in traits
-        assert 'conscientiousness' in traits
-        assert 'extraversion' in traits
-        assert 'agreeableness' in traits
-        assert 'neuroticism' in traits
-        
-        # All traits should be within bounds
-        for trait, value in traits.items():
-            bounds = personality_engine.profile.trait_bounds[trait]
-            assert bounds[0] <= value <= bounds[1]
-    
-    def test_trait_update(self, personality_engine):
-        """Test personality trait updates"""
-        initial_openness = personality_engine.profile.openness
-        
-        # Process interaction that should increase openness
-        personality_engine.process_interaction({
-            'topic_complexity': 0.9,
-            'user_sentiment': 0.8
+        consciousness_core.process_input("Test input", {
+            'sentiment': {'pleasure': 0.8, 'arousal': 0.5}
         })
         
-        # Openness should have increased slightly
-        assert personality_engine.profile.openness >= initial_openness
+        assert consciousness_core.state.interaction_count == initial_count + 1
+        assert len(consciousness_core.memory_buffer) == 1
+        assert consciousness_core.state.emotional_state['pleasure'] > 0.6
     
-    def test_behavioral_modifiers(self, personality_engine):
-        """Test behavioral modifier calculation"""
-        modifiers = personality_engine.get_behavioral_modifiers()
+    @pytest.mark.asyncio
+    async def test_coherence_calculation(self, consciousness_core):
+        """Test coherence score calculation"""
+        # Add memories to buffer
+        for i in range(5):
+            consciousness_core.memory_buffer.append(f"Memory {i}")
         
-        assert 'response_length' in modifiers
-        assert 'emotional_expression' in modifiers
-        assert 'formality' in modifiers
-        assert 'creativity' in modifiers
+        consciousness_core._calculate_coherence()
         
-        # All modifiers should be within [-1, 1]
-        for modifier, value in modifiers.items():
-            assert -1.0 <= value <= 1.0
-
+        # Should have high coherence with consistent memories
+        assert consciousness_core.state.global_coherence > 0.5
+        assert consciousness_core.state.global_coherence <= 1.0
+    
+    @pytest.mark.asyncio
+    async def test_attention_update(self, consciousness_core):
+        """Test attention focus updates"""
+        # Mock GPU tensor operations
+        with patch('torch.randn') as mock_randn:
+            mock_tensor = Mock()
+            mock_tensor.unsqueeze.return_value = mock_tensor
+            mock_tensor.squeeze.return_value = mock_tensor
+            mock_tensor.mean.return_value = mock_tensor
+            mock_tensor.argmax.return_value.item.return_value = 0
+            mock_randn.return_value = mock_tensor
+            
+            consciousness_core.memory_buffer.append("Focus on this")
+            await consciousness_core._update_attention()
+            
+            assert consciousness_core.state.attention_focus == "Focus on this"
 
 class TestEmotionalEngine:
-    """Test emotional system"""
+    """Test emotional engine functionality"""
     
-    @pytest.fixture
-    def emotional_engine(self):
-        return EmotionalEngine()
-    
-    def test_emotional_state_initialization(self, emotional_engine):
-        """Test emotional state initialization"""
-        state = emotional_engine.current_state
-        
-        assert 0 <= state.pleasure <= 1
-        assert 0 <= state.arousal <= 1
-        assert 0 <= state.dominance <= 1
-    
-    def test_emotional_update(self, emotional_engine):
-        """Test emotional state updates"""
+    @pytest.mark.asyncio
+    async def test_emotional_state_update(self, emotional_engine):
+        """Test emotional state transitions"""
         initial_state = EmotionalState(
             pleasure=emotional_engine.current_state.pleasure,
             arousal=emotional_engine.current_state.arousal,
@@ -229,16 +135,18 @@ class TestEmotionalEngine:
         # Apply positive stimulus
         emotional_engine.update_emotional_state({
             'sentiment': 0.9,
-            'urgency': 0.7,
+            'urgency': 0.2,
             'success': True
         })
         
-        # State should have changed
-        assert emotional_engine.current_state.distance_to(initial_state) > 0
+        # Should increase pleasure and dominance
+        assert emotional_engine.current_state.pleasure > initial_state.pleasure
+        assert emotional_engine.current_state.dominance > initial_state.dominance
     
-    def test_emotion_labeling(self, emotional_engine):
+    @pytest.mark.asyncio
+    async def test_emotion_labeling(self, emotional_engine):
         """Test emotion label identification"""
-        # Set a specific emotional state
+        # Set to joy state
         emotional_engine.current_state = EmotionalState(
             pleasure=0.8,
             arousal=0.7,
@@ -246,56 +154,193 @@ class TestEmotionalEngine:
         )
         
         label, confidence = emotional_engine.get_closest_emotion_label()
-        
-        assert label in emotional_engine.emotion_categories
-        assert 0 <= confidence <= 1
-        
-        # Should be close to 'joy' given the values
-        assert label in ['joy', 'excitement']
+        assert label == 'joy'
+        assert confidence > 0.7
     
-    def test_baseline_pull(self, emotional_engine):
-        """Test baseline emotional pull"""
-        # Set extreme emotional state
-        emotional_engine.current_state = EmotionalState(
-            pleasure=1.0,
-            arousal=1.0,
-            dominance=1.0
+    @pytest.mark.asyncio
+    async def test_emotional_intensity(self, emotional_engine):
+        """Test emotional intensity calculation"""
+        # Neutral state
+        emotional_engine.current_state = EmotionalState(0.5, 0.5, 0.5)
+        assert emotional_engine.get_emotional_intensity() < 0.1
+        
+        # Extreme state
+        emotional_engine.current_state = EmotionalState(1.0, 1.0, 1.0)
+        intensity = emotional_engine.get_emotional_intensity()
+        assert intensity > 0.8
+
+class TestPersonalityEngine:
+    """Test personality engine functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_trait_updates(self, personality_engine):
+        """Test personality trait evolution"""
+        initial_openness = personality_engine.profile.openness
+        
+        # Process creative interaction
+        personality_engine.process_interaction({
+            'topic_complexity': 0.9,
+            'novelty': 0.8,
+            'creativity_required': 0.9
+        })
+        
+        # Openness should increase slightly
+        assert personality_engine.profile.openness > initial_openness
+    
+    @pytest.mark.asyncio
+    async def test_trait_bounds(self, personality_engine):
+        """Test personality trait boundaries"""
+        # Try to set extreme values
+        personality_engine.profile.update_trait('neuroticism', 10.0)
+        
+        # Should be clamped to bounds
+        assert personality_engine.profile.neuroticism <= 0.7
+        
+        personality_engine.profile.update_trait('openness', -10.0)
+        assert personality_engine.profile.openness >= 0.4
+    
+    @pytest.mark.asyncio
+    async def test_behavioral_modifiers(self, personality_engine):
+        """Test behavioral modifier calculation"""
+        modifiers = personality_engine.get_behavioral_modifiers()
+        
+        # All modifiers should be in reasonable range
+        for key, value in modifiers.items():
+            assert 0.0 <= value <= 1.0
+
+class TestMemoryManager:
+    """Test memory management functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_memory_storage(self, memory_manager):
+        """Test memory storage and retrieval"""
+        # Store a memory
+        memory_id = await memory_manager.store_memory(
+            "Important test memory",
+            {'importance': 0.9, 'user_id': 'test_user'}
         )
         
-        # Apply neutral stimulus multiple times
-        for _ in range(10):
-            emotional_engine.update_emotional_state({'sentiment': 0.5})
+        assert memory_id in memory_manager.memories
+        assert memory_manager.memories[memory_id].importance == 0.9
+    
+    @pytest.mark.asyncio
+    async def test_memory_retrieval(self, memory_manager):
+        """Test memory retrieval by query"""
+        # Store multiple memories
+        await memory_manager.store_memory("Python programming test", {'importance': 0.8})
+        await memory_manager.store_memory("JavaScript testing", {'importance': 0.6})
+        await memory_manager.store_memory("Unrelated memory", {'importance': 0.5})
         
-        # Should have moved toward baseline
-        assert emotional_engine.current_state.pleasure < 1.0
-        assert emotional_engine.current_state.arousal < 1.0
-
+        # Retrieve by query
+        results = await memory_manager.retrieve_memories("programming test", k=2)
+        
+        assert len(results) == 2
+        assert "Python" in results[0].content
+    
+    @pytest.mark.asyncio
+    async def test_memory_consolidation(self, memory_manager):
+        """Test memory consolidation process"""
+        # Create old memories with low salience
+        for i in range(10):
+            memory = MemoryItem(
+                id=f"old_{i}",
+                content=f"Old memory {i}",
+                timestamp=datetime(2020, 1, 1),  # Very old
+                importance=0.1,
+                emotional_context={},
+                associations=[]
+            )
+            memory_manager.memories[memory.id] = memory
+        
+        initial_count = len(memory_manager.memories)
+        await memory_manager.consolidate_memories()
+        
+        # Should have fewer memories after consolidation
+        assert len(memory_manager.memories) < initial_count
 
 class TestIntegration:
-    """Integration tests for the complete system"""
+    """Integration tests across components"""
     
     @pytest.mark.asyncio
-    async def test_consciousness_memory_integration(self):
-        """Test integration between consciousness and memory"""
-        # This would require a full system setup
-        # Placeholder for integration test
-        pass
+    async def test_consciousness_emotional_integration(self, consciousness_core, emotional_engine):
+        """Test integration between consciousness and emotions"""
+        # Process input that affects emotions
+        consciousness_core.process_input("This makes me very happy!", {
+            'sentiment': {'pleasure': 0.9, 'arousal': 0.7}
+        })
+        
+        # Update emotional engine based on consciousness state
+        emotional_engine.update_emotional_state({
+            'sentiment': consciousness_core.state.emotional_state['pleasure']
+        })
+        
+        # Both should reflect positive state
+        assert consciousness_core.state.emotional_state['pleasure'] > 0.6
+        assert emotional_engine.current_state.pleasure > 0.6
     
     @pytest.mark.asyncio
-    async def test_full_interaction_flow(self):
-        """Test a complete interaction flow"""
-        # This would test the entire pipeline from input to response
-        # Placeholder for integration test
-        pass
+    async def test_memory_consciousness_integration(self, consciousness_core, memory_manager):
+        """Test memory and consciousness integration"""
+        # Add memories to consciousness
+        test_memories = ["Memory 1", "Memory 2", "Memory 3"]
+        for mem in test_memories:
+            consciousness_core.process_input(mem)
+            await memory_manager.store_memory(mem, {'source': 'consciousness'})
+        
+        # Consciousness should track memories
+        assert len(consciousness_core.memory_buffer) >= 3
+        
+        # Memory manager should have stored them
+        assert len(memory_manager.memories) >= 3
 
+# Performance tests
+class TestPerformance:
+    """Performance and load tests"""
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_consciousness_cycle_performance(self, consciousness_core):
+        """Test consciousness cycle performance"""
+        import time
+        
+        # Measure cycle time
+        start = time.time()
+        await consciousness_core._update_attention()
+        await consciousness_core._consolidate_memory()
+        await consciousness_core._update_emotional_state()
+        consciousness_core._calculate_coherence()
+        
+        cycle_time = time.time() - start
+        
+        # Should complete in reasonable time
+        assert cycle_time < 0.1  # 100ms max
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_memory_scaling(self, memory_manager):
+        """Test memory system scaling"""
+        import time
+        
+        # Store many memories
+        start = time.time()
+        for i in range(1000):
+            await memory_manager.store_memory(
+                f"Memory {i} with unique content",
+                {'index': i}
+            )
+        
+        storage_time = time.time() - start
+        
+        # Should handle 1000 memories efficiently
+        assert storage_time < 10.0  # 10 seconds max
+        
+        # Test retrieval performance
+        start = time.time()
+        results = await memory_manager.retrieve_memories("unique content", k=10)
+        retrieval_time = time.time() - start
+        
+        assert retrieval_time < 0.1  # 100ms max
+        assert len(results) == 10
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+if __name__ == '__main__':
+    pytest.main([__file__, '-v', '-s'])

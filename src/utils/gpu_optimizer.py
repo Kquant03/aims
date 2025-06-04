@@ -13,6 +13,34 @@ logger = logging.getLogger(__name__)
 
 class GPUOptimizer:
     """Optimizes GPU usage for RTX 3090 24GB VRAM"""
+    def verify_flash_attention(self) -> Dict[str, Any]:
+        """Comprehensive Flash Attention verification"""
+        benchmark = FlashAttentionV2Benchmark()
+        
+        results = {
+            'available': benchmark.flash_available,
+            'numerical_accuracy': False,
+            'benchmarks': {}
+        }
+        
+        if benchmark.flash_available:
+            # Verify accuracy
+            results['numerical_accuracy'] = benchmark.verify_numerical_accuracy()
+            
+            # Run benchmarks for different sizes
+            test_configs = [
+                (8, 512, 768, 12),    # Small
+                (4, 2048, 768, 12),   # Medium
+                (2, 4096, 768, 12),   # Large
+            ]
+            
+            for batch, seq_len, hidden, heads in test_configs:
+                key = f"batch{batch}_seq{seq_len}"
+                results['benchmarks'][key] = benchmark.benchmark_attention(
+                    batch, seq_len, hidden, heads
+                )
+        
+        return results
     
     def __init__(self):
         self.device = None
@@ -55,6 +83,8 @@ class GPUOptimizer:
         # Clear any existing allocations
         torch.cuda.empty_cache()
         gc.collect()
+
+        
     
     def get_memory_usage(self) -> Dict[str, float]:
         """Get current GPU memory usage"""
@@ -285,6 +315,121 @@ class GPUOptimizer:
         except:
             pass
 
+        
+
+class FlashAttentionV2Benchmark:
+    """Benchmarking and verification for Flash Attention v2"""
+    
+    def __init__(self):
+        self.flash_available = self._check_flash_attention()
+        
+    def _check_flash_attention(self) -> bool:
+        """Check if Flash Attention v2 is available and working"""
+        try:
+            import flash_attn
+            from flash_attn import flash_attn_func
+            
+            # Check version
+            version = getattr(flash_attn, '__version__', 'unknown')
+            logger.info(f"Flash Attention version: {version}")
+            
+            # Test basic functionality
+            test_tensor = torch.randn(1, 8, 64, device='cuda', dtype=torch.float16)
+            _ = flash_attn_func(test_tensor, test_tensor, test_tensor)
+            
+            logger.info("Flash Attention v2 is available and functional")
+            return True
+            
+        except ImportError:
+            logger.warning("Flash Attention not installed")
+            return False
+        except Exception as e:
+            logger.error(f"Flash Attention test failed: {e}")
+            return False
+    
+    def benchmark_attention(self, batch_size: int = 8, seq_len: int = 2048, 
+                          hidden_dim: int = 768, num_heads: int = 12) -> Dict[str, float]:
+        """Benchmark Flash Attention vs standard attention"""
+        import time
+        
+        results = {}
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Prepare inputs
+        head_dim = hidden_dim // num_heads
+        q = torch.randn(batch_size, seq_len, num_heads, head_dim, 
+                       device=device, dtype=torch.float16)
+        k = torch.randn_like(q)
+        v = torch.randn_like(q)
+        
+        # Warmup
+        for _ in range(10):
+            if self.flash_available:
+                _ = flash_attn_func(q, k, v)
+            else:
+                scores = torch.matmul(q, k.transpose(-2, -1)) / (head_dim ** 0.5)
+                attn = torch.softmax(scores, dim=-1)
+                _ = torch.matmul(attn, v)
+        
+        # Benchmark Flash Attention
+        if self.flash_available:
+            torch.cuda.synchronize()
+            start = time.time()
+            
+            for _ in range(100):
+                output = flash_attn_func(q, k, v)
+            
+            torch.cuda.synchronize()
+            results['flash_attention_ms'] = (time.time() - start) / 100 * 1000
+        
+        # Benchmark standard attention
+        torch.cuda.synchronize()
+        start = time.time()
+        
+        for _ in range(100):
+            scores = torch.matmul(q, k.transpose(-2, -1)) / (head_dim ** 0.5)
+            attn = torch.softmax(scores, dim=-1)
+            output = torch.matmul(attn, v)
+        
+        torch.cuda.synchronize()
+        results['standard_attention_ms'] = (time.time() - start) / 100 * 1000
+        
+        # Calculate speedup
+        if self.flash_available:
+            results['speedup'] = results['standard_attention_ms'] / results['flash_attention_ms']
+        
+        # Memory usage
+        results['peak_memory_mb'] = torch.cuda.max_memory_allocated() / 1e6
+        
+        return results
+    
+    def verify_numerical_accuracy(self, tolerance: float = 1e-3) -> bool:
+        """Verify Flash Attention numerical accuracy"""
+        if not self.flash_available:
+            return False
+        
+        # Test inputs
+        batch_size, seq_len, num_heads, head_dim = 2, 512, 8, 64
+        q = torch.randn(batch_size, seq_len, num_heads, head_dim, 
+                       device='cuda', dtype=torch.float16)
+        k = torch.randn_like(q)
+        v = torch.randn_like(q)
+        
+        # Flash Attention output
+        flash_output = flash_attn_func(q, k, v)
+        
+        # Standard attention output
+        scores = torch.matmul(q, k.transpose(-2, -1)) / (head_dim ** 0.5)
+        attn = torch.softmax(scores, dim=-1)
+        standard_output = torch.matmul(attn, v)
+        
+        # Compare outputs
+        max_diff = torch.max(torch.abs(flash_output - standard_output)).item()
+        mean_diff = torch.mean(torch.abs(flash_output - standard_output)).item()
+        
+        logger.info(f"Flash Attention accuracy - Max diff: {max_diff:.6f}, Mean diff: {mean_diff:.6f}")
+        
+        return max_diff < tolerance
 
 class MemoryEfficientAttention(nn.Module):
     """Memory-efficient attention implementation for RTX 3090"""

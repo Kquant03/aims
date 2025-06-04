@@ -8,6 +8,9 @@ from datetime import datetime
 import numpy as np
 import torch
 import logging
+import msgpack
+import msgpack_numpy as m
+m.patch()  # Enable numpy array serialization
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,94 @@ class StateSerializer:
             'device': str(tensor.device),
             'data': tensor.cpu().numpy().tolist()
         }
+    
+    @staticmethod
+    def serialize_msgpack(data: Any, compress: bool = True) -> bytes:
+        """Serialize data using MessagePack for better performance"""
+        try:
+            # Use msgpack for efficient binary serialization
+            packed = msgpack.packb(
+                data,
+                use_bin_type=True,
+                strict_types=True,
+                default=m.encode  # Handle numpy arrays
+            )
+            
+            if compress:
+                packed = gzip.compress(packed, compresslevel=6)
+            
+            # Add format header
+            header = b"msgpack_gz:" if compress else b"msgpack:"
+            return header + packed
+            
+        except Exception as e:
+            logger.error(f"Error serializing with msgpack: {e}")
+            raise
+    
+    @staticmethod
+    def deserialize_msgpack(data: bytes) -> Any:
+        """Deserialize MessagePack data"""
+        try:
+            # Parse format header
+            header_end = data.find(b':')
+            if header_end == -1:
+                raise ValueError("Invalid serialized data format")
+            
+            format_type = data[:header_end].decode('utf-8')
+            payload = data[header_end + 1:]
+            
+            # Decompress if needed
+            if format_type == 'msgpack_gz':
+                payload = gzip.decompress(payload)
+            
+            # Deserialize
+            return msgpack.unpackb(
+                payload,
+                raw=False,
+                strict_map_key=False,
+                object_hook=m.decode  # Handle numpy arrays
+            )
+            
+        except Exception as e:
+            logger.error(f"Error deserializing msgpack: {e}")
+            raise
+    
+    @staticmethod
+    def benchmark_serialization(data: Any, iterations: int = 100) -> Dict[str, float]:
+        """Benchmark different serialization methods"""
+        import time
+        
+        results = {}
+        
+        # Test JSON
+        start = time.time()
+        for _ in range(iterations):
+            json_data = json.dumps(data, default=str).encode('utf-8')
+        results['json'] = (time.time() - start) / iterations
+        results['json_size'] = len(json_data)
+        
+        # Test Pickle
+        start = time.time()
+        for _ in range(iterations):
+            pickle_data = pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+        results['pickle'] = (time.time() - start) / iterations
+        results['pickle_size'] = len(pickle_data)
+        
+        # Test MessagePack
+        start = time.time()
+        for _ in range(iterations):
+            msgpack_data = msgpack.packb(data, use_bin_type=True)
+        results['msgpack'] = (time.time() - start) / iterations
+        results['msgpack_size'] = len(msgpack_data)
+        
+        # Test with compression
+        start = time.time()
+        for _ in range(iterations):
+            compressed = gzip.compress(msgpack_data, compresslevel=6)
+        results['msgpack_compressed'] = (time.time() - start) / iterations
+        results['msgpack_compressed_size'] = len(compressed)
+        
+        return results
     
     @staticmethod
     def deserialize_tensor(data: Dict[str, Any]) -> torch.Tensor:

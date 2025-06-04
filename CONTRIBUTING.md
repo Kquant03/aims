@@ -1,18 +1,27 @@
-# CONTRIBUTING.md - Contributing Guidelines
-
 # Contributing to AIMS
 
-Thank you for your interest in contributing to AIMS! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to the Autonomous Intelligent Memory System (AIMS)! This document provides guidelines and instructions for contributing.
 
-## 🤝 Code of Conduct
+## Table of Contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Process](#development-process)
+- [Code Style](#code-style)
+- [Testing Guidelines](#testing-guidelines)
+- [Pull Request Process](#pull-request-process)
+- [Reporting Issues](#reporting-issues)
+
+## Code of Conduct
 
 By participating in this project, you agree to abide by our Code of Conduct:
+
 - Be respectful and inclusive
 - Welcome newcomers and help them get started
 - Focus on constructive criticism
 - Respect differing viewpoints and experiences
 
-## 🚀 Getting Started
+## Getting Started
 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
@@ -20,194 +29,332 @@ By participating in this project, you agree to abide by our Code of Conduct:
    git clone https://github.com/yourusername/aims.git
    cd aims
    ```
-3. **Set up the development environment**:
+3. **Add upstream remote**:
    ```bash
-   python setup_helper.py
+   git remote add upstream https://github.com/originalowner/aims.git
    ```
-4. **Create a feature branch**:
+4. **Create a virtual environment**:
    ```bash
-   git checkout -b feature/your-feature-name
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   pip install -r requirements-dev.txt  # Development dependencies
    ```
 
-## 💻 Development Process
+## Development Process
 
-### 1. Before You Start
-- Check existing issues and pull requests
-- Create an issue to discuss major changes
-- Ensure your idea aligns with the project's goals
+### 1. Create a Feature Branch
 
-### 2. Writing Code
-- Follow the existing code style
-- Write clear, self-documenting code
-- Add comments for complex logic
-- Keep functions small and focused
-
-### 3. Code Style
-We use:
-- **Black** for code formatting
-- **Flake8** for linting
-- **Type hints** where appropriate
-
-Run before committing:
 ```bash
-black src/
-flake8 src/ --max-line-length=100
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/issue-description
 ```
 
-### 4. Testing
-- Write tests for new features
-- Ensure all tests pass:
-  ```bash
-  pytest tests/ -v
-  ```
-- Aim for high test coverage
-- Test edge cases
+### 2. Make Your Changes
 
-### 5. Documentation
-- Update README.md if needed
-- Add docstrings to new functions/classes
-- Update configuration examples
-- Document breaking changes
+- Write clean, documented code
+- Follow the existing code style
+- Add tests for new functionality
+- Update documentation as needed
 
-## 📝 Pull Request Process
+### 3. Commit Your Changes
 
-1. **Update your branch**:
+Follow conventional commit format:
+```bash
+git commit -m "feat: add consciousness state visualization"
+git commit -m "fix: resolve memory leak in emotional engine"
+git commit -m "docs: update API documentation"
+```
+
+Commit types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, etc.)
+- `refactor`: Code refactoring
+- `test`: Test additions or modifications
+- `chore`: Build process or auxiliary tool changes
+
+### 4. Keep Your Fork Updated
+
+```bash
+git fetch upstream
+git checkout main
+git merge upstream/main
+git checkout your-branch
+git rebase main
+```
+
+## Code Style
+
+### Python Style Guide
+
+We follow PEP 8 with some modifications:
+
+```python
+# Good: Descriptive variable names
+consciousness_state = calculate_coherence(memory_buffer)
+
+# Good: Type hints
+def process_memory(content: str, importance: float = 0.5) -> MemoryItem:
+    """Process and store a memory item.
+    
+    Args:
+        content: The memory content to store
+        importance: Importance score (0-1)
+        
+    Returns:
+        MemoryItem: The created memory object
+    """
+    pass
+
+# Good: Async/await patterns
+async def update_consciousness_state(self) -> None:
+    """Update consciousness state asynchronously."""
+    async with self.state_lock:
+        self.state = await self.calculate_new_state()
+```
+
+### Documentation
+
+- Use Google-style docstrings
+- Document all public APIs
+- Include usage examples for complex functions
+- Keep comments concise and meaningful
+
+### Code Organization
+
+```
+src/
+├── core/           # Core consciousness components
+├── api/            # API interfaces
+├── persistence/    # Data persistence layer
+├── ui/             # User interface
+└── utils/          # Utility functions
+```
+
+## Testing Guidelines
+
+### Writing Tests
+
+```python
+import pytest
+from unittest.mock import Mock, AsyncMock
+
+class TestConsciousnessCore:
+    """Test consciousness core functionality."""
+    
+    @pytest.fixture
+    async def consciousness_core(self):
+        """Create consciousness core fixture."""
+        config = {'cycle_frequency': 10.0}
+        core = ConsciousnessCore(config)
+        yield core
+        core.shutdown()
+    
+    @pytest.mark.asyncio
+    async def test_coherence_calculation(self, consciousness_core):
+        """Test coherence score calculation."""
+        # Arrange
+        consciousness_core.memory_buffer.extend(['mem1', 'mem2'])
+        
+        # Act
+        consciousness_core._calculate_coherence()
+        
+        # Assert
+        assert 0 <= consciousness_core.state.global_coherence <= 1
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Run specific test file
+pytest tests/test_core.py -v
+
+# Run tests matching pattern
+pytest -k "consciousness" -v
+```
+
+### Test Categories
+
+- **Unit Tests**: Test individual components
+- **Integration Tests**: Test component interactions
+- **Performance Tests**: Test performance metrics
+- **End-to-End Tests**: Test complete workflows
+
+## Pull Request Process
+
+### Before Submitting
+
+1. **Test your changes**:
    ```bash
-   git fetch upstream
-   git rebase upstream/main
+   pytest
+   black src/ tests/  # Format code
+   flake8 src/ tests/  # Lint code
+   mypy src/  # Type checking
    ```
 
-2. **Push your changes**:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+2. **Update documentation**:
+   - Update README.md if needed
+   - Add/update docstrings
+   - Update API documentation
 
-3. **Create a Pull Request** with:
-   - Clear title and description
-   - Reference to related issues
-   - Summary of changes
-   - Screenshots (if UI changes)
+3. **Ensure compatibility**:
+   - Test on Python 3.10+
+   - Verify GPU functionality (if applicable)
+   - Check all database integrations
 
-4. **PR Requirements**:
-   - All tests must pass
-   - Code must be formatted
-   - Documentation updated
-   - No merge conflicts
+### PR Template
 
-5. **Review Process**:
-   - Be patient and respectful
-   - Address reviewer feedback
-   - Make requested changes
-   - Re-request review when ready
+```markdown
+## Description
+Brief description of changes
 
-## 🏗️ Architecture Guidelines
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
 
-### Core Principles
-1. **Modularity**: Keep components loosely coupled
-2. **Efficiency**: Optimize for RTX 3090 but support CPU
-3. **Persistence**: Ensure state can be saved/restored
-4. **Monitoring**: Add metrics for new features
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Manual testing completed
 
-### Adding New Features
+## Checklist
+- [ ] Code follows style guidelines
+- [ ] Self-review completed
+- [ ] Documentation updated
+- [ ] Tests added/updated
+```
 
-#### Consciousness Components
-- Extend `ConsciousnessCore` for new cognitive features
-- Maintain the 2-5Hz update cycle
-- Document theoretical basis
+### Review Process
 
-#### Memory Systems
-- Use `PersistentMemoryManager` for storage
-- Consider memory efficiency
-- Implement consolidation strategies
+1. Submit PR against `main` branch
+2. Ensure CI/CD checks pass
+3. Address reviewer feedback
+4. Maintainers will merge when approved
 
-#### Emotional/Personality
-- Maintain bounded trait evolution
-- Ensure smooth transitions
-- Preserve core personality
+## Reporting Issues
 
-## 🐛 Reporting Issues
+### Bug Reports
 
-### Bug Reports Should Include:
-- System information (OS, GPU, Python version)
+Include:
+- Python version
+- GPU model and CUDA version
 - Steps to reproduce
-- Expected behavior
-- Actual behavior
-- Error messages/logs
-- Configuration used
+- Expected vs actual behavior
+- Error logs
 
-### Feature Requests Should Include:
-- Clear use case
-- Expected behavior
-- Implementation ideas (optional)
-- Theoretical basis (for consciousness features)
+### Feature Requests
 
-## 🎯 Areas for Contribution
+Include:
+- Use case description
+- Proposed implementation (if any)
+- Impact on existing functionality
 
-### High Priority
-- Performance optimizations
-- Memory efficiency improvements
-- Additional consciousness theories
-- Better visualization tools
+## Development Setup Tips
 
-### Good First Issues
-- Documentation improvements
-- Test coverage expansion
-- UI/UX enhancements
-- Configuration examples
+### GPU Development
 
-### Research Areas
-- Alternative emotional models
-- Advanced memory consolidation
-- Multi-modal consciousness
-- Distributed consciousness
+```bash
+# Check CUDA availability
+python -c "import torch; print(torch.cuda.is_available())"
 
-## 📊 Performance Contributions
+# Monitor GPU usage
+watch -n 1 nvidia-smi
+```
 
-When optimizing performance:
-1. Profile before and after
-2. Document benchmarks
-3. Test on multiple hardware configs
-4. Consider CPU fallbacks
+### Database Development
 
-## 🔒 Security Contributions
+```bash
+# Start only databases
+docker-compose up -d postgres redis qdrant
 
-For security-related contributions:
-- Report vulnerabilities privately first
-- Follow responsible disclosure
-- Add security tests
-- Document security implications
+# Connect to PostgreSQL
+psql -h localhost -p 5433 -U aims -d aims_memory
 
-## 📚 Resources
+# Monitor Redis
+redis-cli monitor
+```
 
-### Recommended Reading
-- Global Workspace Theory papers
-- Attention Schema Theory research
-- PAD emotional model literature
-- OCEAN personality framework
+### Debugging
 
-### Development Tools
-- PyTorch documentation
-- Anthropic API reference
-- Docker best practices
-- WebSocket protocols
+```python
+# Enable debug logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
-## 🙏 Recognition
+# GPU memory debugging
+import torch
+torch.cuda.empty_cache()
+print(torch.cuda.memory_summary())
+```
 
-Contributors will be:
-- Listed in CONTRIBUTORS.md
-- Credited in release notes
-- Thanked in project updates
+## Questions?
 
-## 💬 Communication
+- Check existing issues and PRs
+- Ask in discussions
+- Contact maintainers
 
-- **GitHub Issues**: Bug reports and features
-- **GitHub Discussions**: General questions
-- **Pull Requests**: Code contributions
+Thank you for contributing to AIMS! 🚀
+```
 
-## ⚖️ License
+## 7. Session Encoding Verification
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+The session encoding in `src/ui/web_interface.py` is already correctly implemented using `EncryptedCookieStorage`. No changes needed, but I'll add a verification test:
 
----
+```python
+# Add to tests/test_session.py
+import pytest
+from aiohttp_session import get_session
+from src.ui.web_interface import AIMSWebInterface
 
-Thank you for contributing to AIMS! Together we're advancing human-AI interaction. 🚀
+class TestSessionManagement:
+    """Test session encoding and management"""
+    
+    @pytest.mark.asyncio
+    async def test_session_encoding(self):
+        """Verify session encoding works correctly"""
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test_key'}):
+            interface = AIMSWebInterface()
+            
+            # Create test request
+            async with interface.app.test_client() as client:
+                # First request should create session
+                resp = await client.get('/')
+                assert resp.status == 200
+                
+                # Check session was created
+                cookies = resp.cookies
+                assert any('aiohttp_session' in cookie for cookie in cookies)
+                
+                # Second request should maintain session
+                resp2 = await client.get('/', cookies=cookies)
+                assert resp2.status == 200
+    
+    @pytest.mark.asyncio
+    async def test_session_persistence(self):
+        """Test session data persistence"""
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test_key'}):
+            interface = AIMSWebInterface()
+            
+            async with interface.app.test_client() as client:
+                # Store data in session
+                async with client.post('/api/chat', json={'message': 'test'}) as resp:
+                    assert resp.status == 200
+                    data = await resp.json()
+                    session_id = data.get('session_id')
+                
+                # Verify session persists
+                async with client.get('/api/session') as resp:
+                    assert resp.status == 200
+                    session_data = await resp.json()
+                    assert session_data.get('session_id') == session_id

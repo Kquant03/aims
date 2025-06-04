@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import asyncio
 import logging
+import aioboto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,161 @@ class BackupManager:
         self.compression_level = config.get('compression_level', 6)
         self.verify_backups = config.get('verify_backups', True)
         self.encryption_enabled = config.get('encryption_enabled', False)
+
+    async def _init_s3_client(self):
+        """Initialize S3 client if configured"""
+        if self.s3_config.get('enabled'):
+            self.s3_session = aioboto3.Session()
+            return True
+        return False
+    
+    async def upload_to_s3(self, local_path: Path, s3_key: str, 
+                          metadata: Optional[Dict[str, str]] = None):
+        """Upload file to S3 with retry logic"""
+        if not self.s3_config.get('enabled'):
+            logger.warning("S3 backup not enabled")
+            return False
+        
+        max_retries = 3
+        retry_delay = 1
+        
+        for attempt in range(max_retries):
+            try:
+                async with self.s3_session.client(
+                    's3',
+                    aws_access_key_id=self.s3_config['access_key'],
+                    aws_secret_access_key=self.s3_config['secret_key'],
+                    region_name=self.s3_config.get('region', 'us-east-1')
+                ) as s3:
+                    # Add metadata
+                    extra_args = {}
+                    if metadata:
+                        extra_args['Metadata'] = metadata
+                    
+                    # Upload with progress callback
+                    file_size = local_path.stat().st_size
+                    
+                    with open(local_path, 'rb') as f:
+                        await s3.upload_fileobj(
+                            f,
+                            self.s3_config['bucket'],
+                            s3_key,
+                            ExtraArgs=extra_args,
+                            Callback=self._upload_progress_callback(file_size)
+                        )
+                    
+                    logger.info(f"Successfully uploaded {local_path.name} to S3: {s3_key}")
+                    return True
+                    
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchBucket':
+                    logger.error(f"S3 bucket {self.s3_config['bucket']} does not exist")
+                    return False
+                elif attempt < max_retries - 1:
+                    logger.warning(f"S3 upload failed (attempt {attempt + 1}), retrying...")
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                else:
+                    logger.error(f"Failed to upload to S3 after {max_retries} attempts: {e}")
+                    return False
+            except Exception as e:
+                logger.error(f"Unexpected error during S3 upload: {e}")
+                return False
+    
+    async def download_from_s3(self, s3_key: str, local_path: Path) -> bool:
+        """Download file from S3"""
+        if not self.s3_config.get('enabled'):
+            return False
+        
+        try:
+            async with self.s3_session.client(
+                's3',
+                aws_access_key_id=self.s3_config['access_key'],
+                aws_secret_access_key=self.s3_config['secret_key'],
+                region_name=self.s3_config.get('region', 'us-east-1')
+            ) as s3:
+                # Get object size first
+                response = await s3.head_object(
+                    Bucket=self.s3_config['bucket'],
+                    Key=s3_key
+                )
+                file_size = response['ContentLength']
+                
+                # Download with progress
+                with open(local_path, 'wb') as f:
+                    await s3.download_fileobj(
+                        self.s3_config['bucket'],
+                        s3_key,
+                        f,
+                        Callback=self._download_progress_callback(file_size)
+                    )
+                
+                logger.info(f"Successfully downloaded {s3_key} from S3")
+                return True
+                
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                logger.error(f"S3 object not found: {s3_key}")
+            else:
+                logger.error(f"S3 download error: {e}")
+            return False
+    
+    async def list_s3_backups(self) -> List[Dict[str, Any]]:
+        """List all backups in S3"""
+        if not self.s3_config.get('enabled'):
+            return []
+        
+        backups = []
+        
+        try:
+            async with self.s3_session.client(
+                's3',
+                aws_access_key_id=self.s3_config['access_key'],
+                aws_secret_access_key=self.s3_config['secret_key'],
+                region_name=self.s3_config.get('region', 'us-east-1')
+            ) as s3:
+                paginator = s3.get_paginator('list_objects_v2')
+                
+                async for page in paginator.paginate(
+                    Bucket=self.s3_config['bucket'],
+                    Prefix='aims-backups/'
+                ):
+                    if 'Contents' in page:
+                        for obj in page['Contents']:
+                            backups.append({
+                                'key': obj['Key'],
+                                'size': obj['Size'],
+                                'last_modified': obj['LastModified'].isoformat(),
+                                'storage_class': obj.get('StorageClass', 'STANDARD')
+                            })
+        
+        except Exception as e:
+            logger.error(f"Error listing S3 backups: {e}")
+        
+        return backups
+    
+    def _upload_progress_callback(self, file_size: int):
+        """Create upload progress callback"""
+        uploaded = 0
+        
+        def callback(bytes_amount):
+            nonlocal uploaded
+            uploaded += bytes_amount
+            percentage = (uploaded / file_size) * 100
+            logger.debug(f"Upload progress: {percentage:.1f}%")
+        
+        return callback
+    
+    def _download_progress_callback(self, file_size: int):
+        """Create download progress callback"""
+        downloaded = 0
+        
+        def callback(bytes_amount):
+            nonlocal downloaded
+            downloaded += bytes_amount
+            percentage = (downloaded / file_size) * 100
+            logger.debug(f"Download progress: {percentage:.1f}%")
+        
+        return callback
         
     async def create_checkpoint(self, claude_interface, checkpoint_name: Optional[str] = None) -> Dict[str, Any]:
         """Create a complete system checkpoint"""
