@@ -61,7 +61,7 @@ class GPUOptimizer:
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
             self.vram_total = info.total
             
-            logger.info(f"GPU initialized: {pynvml.nvmlDeviceGetName(handle).decode()}")
+            logger.info(f"GPU initialized: {str(pynvml.nvmlDeviceGetName(handle))}")
             logger.info(f"Total VRAM: {self.vram_total / 1e9:.1f} GB")
         except Exception as e:
             logger.error(f"Error initializing NVML: {e}")

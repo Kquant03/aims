@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fixed run script for AIMS
+# run_aims.sh - Quick script to run AIMS with minimal dependencies
 
 # Colors
 GREEN='\033[0;32m'
@@ -8,50 +8,56 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${BLUE}🚀 Starting AIMS...${NC}"
+echo -e "${BLUE}🚀 Starting AIMS (Quick Start)${NC}"
+echo "=============================="
 
-# Check if venv exists
-if [ ! -d "venv" ]; then
-    echo -e "${RED}Virtual environment not found. Run setup script first${NC}"
-    exit 1
+# Install only the critical missing packages
+echo -e "${YELLOW}Installing critical missing packages...${NC}"
+./venv/bin/pip install -q redis websockets aiohttp-session aiohttp-jinja2
+
+# Check .env file
+if [ ! -f ".env" ]; then
+    echo -e "${RED}No .env file found!${NC}"
+    echo "Creating .env from template..."
+    if [ -f ".env.example" ]; then
+        cp .env.example .env
+    else
+        echo -e "${RED}No .env.example found either!${NC}"
+        exit 1
+    fi
 fi
 
-# Use absolute path for Python
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-cd "$SCRIPT_DIR"
+# Export environment variables
+set -a
+source .env
+set +a
 
-# Activate venv (for environment variables)
-source venv/bin/activate
-
-# Check if Docker services are running
-if ! docker-compose ps 2>/dev/null | grep -q "Up"; then
-    echo "Starting Docker services..."
-    docker-compose up -d
-    echo "Waiting for services to be ready..."
-    sleep 5
-fi
-
-# Export environment variables from .env
-if [ -f ".env" ]; then
-    set -a  # automatically export all variables
-    source .env
-    set +a
-fi
-
-# Check for API key
+# Check API key
 if [ -z "$ANTHROPIC_API_KEY" ] || [ "$ANTHROPIC_API_KEY" = "your-anthropic-api-key-here" ]; then
-    echo ""
     echo -e "${YELLOW}WARNING: ANTHROPIC_API_KEY not set!${NC}"
     echo "Edit .env file and add your API key"
     echo ""
 fi
 
-# Use the venv Python explicitly
-echo -e "${GREEN}✅ Starting AIMS on http://localhost:8000${NC}"
-echo -e "${GREEN}✅ WebSocket server on ws://localhost:8765${NC}"
-echo ""
+# Check Docker
+if docker ps >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Docker is accessible${NC}"
+    
+    # Start services if needed
+    if ! docker-compose ps 2>/dev/null | grep -q "Up"; then
+        echo "Starting Docker services..."
+        docker-compose up -d
+        sleep 5
+    fi
+else
+    echo -e "${YELLOW}⚠️  Docker not accessible - some features may not work${NC}"
+fi
+
+# Run AIMS
+echo -e "${GREEN}Starting AIMS...${NC}"
+echo "Web interface: http://localhost:8000"
 echo "Press Ctrl+C to stop"
 echo ""
 
-# Run with full path to venv Python
-"${SCRIPT_DIR}/venv/bin/python" -m src.main
+# Use the venv Python directly
+exec ./venv/bin/python -m src.main

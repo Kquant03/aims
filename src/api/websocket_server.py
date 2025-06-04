@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Set, Dict, Any, Optional
+from typing import Set, Dict, List, Any, Optional
 from datetime import datetime
 from collections import deque
 import websockets

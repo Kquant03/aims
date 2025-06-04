@@ -1,4 +1,4 @@
-# AIMS Complete Requirements - Fixed Version
+# AIMS Complete Requirements
 # Python 3.10+ recommended
 
 # Core AI/ML Dependencies
@@ -79,7 +79,7 @@ langchain-community>=0.0.10
 langchain-openai>=0.0.5
 langchain-anthropic>=0.1.1
 sentence-transformers>=2.2.0,<3.0.0
-faiss-cpu>=1.7.4,<2.0.0  # Changed from faiss-gpu
+faiss-cpu>=1.7.4,<2.0.0  # Use faiss-gpu for GPU support
 
 # Graph Processing
 networkx>=3.0,<4.0
@@ -108,8 +108,24 @@ validators>=0.22.0,<1.0.0
 pytz>=2023.3
 python-dateutil>=2.8.0,<3.0.0
 
+# Optional GPU Optimizations (comment out if not using GPU)
+# flash-attn>=2.3.0,<3.0.0  # Requires special installation
+# xformers>=0.0.22  # For efficient transformers
+# apex  # NVIDIA's mixed precision training
+
+# Optional but recommended
+# jupyterlab>=4.0.0,<5.0.0
+# streamlit>=1.29.0,<2.0.0  # For alternative UI
+# gradio>=4.0.0,<5.0.0  # For ML demos
+
+# Additional packages to add to requirements.txt (append these):
+
 # Memory-specific packages
+faiss-gpu>=1.7.4,<2.0.0  # GPU-accelerated vector search (comment out faiss-cpu)
 hnswlib>=0.7.0,<1.0.0  # HNSW indexing for fast similarity search
+
+# Flash Attention (requires special installation)
+# flash-attn>=2.3.0,<3.0.0  # Uncomment and install separately with: pip install flash-attn --no-build-isolation
 
 # Additional optimization packages
 einops>=0.7.0,<1.0.0  # Tensor operations

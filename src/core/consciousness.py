@@ -14,7 +14,7 @@ try:
     FLASH_ATTENTION_AVAILABLE = True
 except ImportError:
     FLASH_ATTENTION_AVAILABLE = False
-    logger.warning("Flash Attention not available, using standard attention")
+    print("WARNING: Flash Attention not available, using standard attention")
 
 from src.utils.gpu_optimizer import gpu_optimizer
 
@@ -138,7 +138,7 @@ class ConsciousnessCore:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.state = self._initialize_state()
-        self.attention = AttentionMechanism()
+        self.attention = ConsciousnessAttentionMechanism()
         self.memory_buffer = deque(maxlen=config.get('working_memory_size', 7))
         self.cycle_frequency = config.get('cycle_frequency', 2.0)  # 2Hz default
         self._running = False
