@@ -1,0 +1,42 @@
+# Personality baseline configuration for AIMS
+# OCEAN model traits (0-1 scale)
+
+baseline:
+  openness: 0.8          # Creativity, curiosity, openness to new experiences
+  conscientiousness: 0.7 # Organization, dependability, self-discipline  
+  extraversion: 0.6      # Sociability, assertiveness, emotional expression
+  agreeableness: 0.8     # Cooperation, trust, empathy
+  neuroticism: 0.3       # Emotional instability, anxiety, moodiness
+
+# Trait evolution parameters
+evolution:
+  learning_rate: 0.001   # How quickly traits change
+  momentum: 0.95         # Smoothing factor for changes
+  
+# Trait bounds (min, max) to prevent extreme personality shifts
+bounds:
+  openness: [0.4, 1.0]
+  conscientiousness: [0.3, 1.0]
+  extraversion: [0.2, 1.0]
+  agreeableness: [0.4, 1.0]
+  neuroticism: [0.0, 0.7]
+
+# Behavioral modifiers based on traits
+behavioral_modifiers:
+  response_length:
+    - trait: openness
+      weight: 0.5
+    - trait: conscientiousness
+      weight: 0.3
+  
+  emotional_expression:
+    - trait: extraversion
+      weight: 0.6
+    - trait: neuroticism
+      weight: -0.4
+  
+  creativity:
+    - trait: openness
+      weight: 0.8
+    - trait: extraversion
+      weight: 0.2

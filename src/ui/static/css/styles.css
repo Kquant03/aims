@@ -1,0 +1,40 @@
+/* AIMS Styles */
+:root {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #0f0f0f;
+    --text-primary: #e0e0e0;
+    --text-secondary: #888;
+    --accent: #0066cc;
+    --accent-hover: #0052a3;
+    --border: #333;
+    --success: #00ff88;
+    --error: #ff4444;
+}
+
+/* Additional styles for consciousness visualization */
+.consciousness-viz {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.memory-graph {
+    width: 100%;
+    height: 300px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.8; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
