@@ -9,6 +9,14 @@ from dataclasses import dataclass, asdict
 import json
 from collections import deque
 import logging
+try:
+    from flash_attn import flash_attn_func, flash_attn_qkvpacked_func
+    FLASH_ATTENTION_AVAILABLE = True
+except ImportError:
+    FLASH_ATTENTION_AVAILABLE = False
+    logger.warning("Flash Attention not available, using standard attention")
+
+from src.utils.gpu_optimizer import gpu_optimizer
 
 logger = logging.getLogger(__name__)
 
@@ -41,25 +49,88 @@ class ConsciousnessState:
             data['last_interaction'] = datetime.fromisoformat(data['last_interaction'])
         return cls(**data)
 
-class AttentionMechanism(nn.Module):
-    """Simplified attention mechanism for consciousness focus"""
-    def __init__(self, input_dim: int = 768, hidden_dim: int = 256):
+class ConsciousnessAttentionMechanism(nn.Module):
+    """Enhanced attention mechanism with Flash Attention support"""
+    
+    def __init__(self, input_dim: int = 768, hidden_dim: int = 256, num_heads: int = 8):
         super().__init__()
-        self.query_proj = nn.Linear(input_dim, hidden_dim)
-        self.key_proj = nn.Linear(input_dim, hidden_dim)
-        self.value_proj = nn.Linear(input_dim, hidden_dim)
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+        self.head_dim = hidden_dim // num_heads
+        
+        # Ensure head dimension is compatible with Flash Attention
+        assert self.head_dim in [32, 64, 128], f"Head dim {self.head_dim} not optimal for Flash Attention"
+        
+        self.qkv_proj = nn.Linear(input_dim, hidden_dim * 3)
         self.output_proj = nn.Linear(hidden_dim, input_dim)
+        self.dropout = nn.Dropout(0.1)
         
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        Q = self.query_proj(x)
-        K = self.key_proj(x)
-        V = self.value_proj(x)
+    def forward(self, x: torch.Tensor, use_flash: bool = True) -> torch.Tensor:
+        batch_size, seq_len, _ = x.shape
         
-        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / np.sqrt(Q.size(-1))
-        attention_weights = torch.softmax(attention_scores, dim=-1)
+        # Project to Q, K, V
+        qkv = self.qkv_proj(x)
         
-        attended = torch.matmul(attention_weights, V)
-        return self.output_proj(attended)
+        if use_flash and FLASH_ATTENTION_AVAILABLE and x.is_cuda:
+            # Reshape for Flash Attention
+            qkv = qkv.reshape(batch_size, seq_len, 3, self.num_heads, self.head_dim)
+            
+            # Use Flash Attention
+            with torch.cuda.amp.autocast():
+                output = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=0.1 if self.training else 0.0,
+                    causal=False
+                )
+            
+            output = output.reshape(batch_size, seq_len, self.hidden_dim)
+        else:
+            # Standard attention fallback
+            qkv = qkv.reshape(batch_size, seq_len, 3, self.num_heads, self.head_dim)
+            q, k, v = qkv.unbind(dim=2)
+            
+            # Transpose for attention
+            q = q.transpose(1, 2)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+            
+            # Compute attention
+            scores = torch.matmul(q, k.transpose(-2, -1)) / np.sqrt(self.head_dim)
+            attn_weights = torch.softmax(scores, dim=-1)
+            attn_weights = self.dropout(attn_weights)
+            
+            output = torch.matmul(attn_weights, v)
+            output = output.transpose(1, 2).contiguous()
+            output = output.reshape(batch_size, seq_len, self.hidden_dim)
+        
+        return self.output_proj(output)
+
+# Add coherence calculation method to ConsciousnessCore:
+def calculate_phi_approximation(self) -> float:
+    """Calculate approximation of Integrated Information (Phi)"""
+    if not self.memory_buffer:
+        return 1.0
+    
+    # Convert memories to embeddings (simplified)
+    memories = list(self.memory_buffer)
+    n = len(memories)
+    
+    # Calculate pairwise mutual information (simplified)
+    total_integration = 0.0
+    
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Simplified mutual information based on string similarity
+            similarity = len(set(memories[i].split()) & set(memories[j].split()))
+            similarity /= max(len(memories[i].split()), len(memories[j].split()))
+            total_integration += similarity
+    
+    # Normalize
+    max_possible = (n * (n - 1)) / 2
+    phi = total_integration / max_possible if max_possible > 0 else 1.0
+    
+    return min(1.0, phi)
 
 class ConsciousnessCore:
     """Main consciousness system coordinating all components"""
