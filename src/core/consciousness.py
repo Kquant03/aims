@@ -1,4 +1,4 @@
-# consciousness.py - Core AIMS Consciousness System
+# consciousness.py - Core AIMS Consciousness System (FIXED)
 import asyncio
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ try:
     FLASH_ATTENTION_AVAILABLE = True
 except ImportError:
     FLASH_ATTENTION_AVAILABLE = False
-    logging.warning("Flash Attention not available, using standard attention")
+    logging.info("Flash Attention not available, using standard attention (this is normal)")
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class ConsciousnessCore:
                     await self._persist_state()
                 
             except Exception as e:
-                logger.error(f"Error in consciousness loop: {e}")
+                logger.error(f"Error in consciousness loop: {e}", exc_info=True)
                 self.state.global_coherence *= 0.9  # Reduce coherence on errors
             
             # Maintain cycle timing
@@ -185,14 +185,16 @@ class ConsciousnessCore:
             recent_memories = list(self.memory_buffer)
             
             # Convert to embeddings (simplified - in production use real embeddings)
-            embeddings = torch.randn(len(recent_memories), 768).to(self.device)
+            # Fix: Create proper batch dimension
+            embeddings = torch.randn(1, len(recent_memories), 768).to(self.device)
             
             # Apply attention
             with torch.no_grad():
-                attended = self.attention(embeddings.unsqueeze(0))
+                attended = self.attention(embeddings)
             
             # Update focus based on attention weights
-            attention_scores = attended.squeeze().mean(dim=1)
+            # Fix: Correct dimension handling
+            attention_scores = attended.squeeze(0).mean(dim=1)  # Remove batch dim first
             max_attention_idx = attention_scores.argmax().item()
             
             if max_attention_idx < len(recent_memories):
@@ -294,31 +296,3 @@ class ConsciousnessCore:
         """Graceful shutdown of consciousness loop"""
         self._running = False
         logger.info("Consciousness core shutting down")
-
-# Example usage
-if __name__ == "__main__":
-    config = {
-        "cycle_frequency": 2.0,
-        "working_memory_size": 7,
-        "coherence_threshold": 0.7
-    }
-    
-    consciousness = ConsciousnessCore(config)
-    
-    # Start consciousness loop
-    async def main():
-        task = asyncio.create_task(consciousness.consciousness_loop())
-        
-        # Simulate some interactions
-        consciousness.process_input("Hello, how are you today?")
-        await asyncio.sleep(1)
-        
-        consciousness.process_input("I'd like to discuss consciousness")
-        await asyncio.sleep(1)
-        
-        print(consciousness.get_state_summary())
-        
-        consciousness.shutdown()
-        await task
-    
-    asyncio.run(main())

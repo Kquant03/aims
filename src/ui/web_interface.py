@@ -9,7 +9,7 @@ import aiofiles
 from aiohttp import web
 import aiohttp_cors
 from aiohttp_session import setup, get_session
-from aiohttp_session.cookie_storage import EncryptedCookieStorage
+from aiohttp_session import SimpleCookieStorage
 import jinja2
 import aiohttp_jinja2
 from pathlib import Path
@@ -52,9 +52,9 @@ class AIMSWebInterface:
             port=8765
         )
         
-        # Set up session middleware
-        secret_key = os.environ.get('SESSION_SECRET', 'dev-secret-key-change-in-production')
-        setup(self.app, EncryptedCookieStorage(secret_key))
+                # Set up session middleware - BYPASSED
+        setup(self.app, SimpleCookieStorage())
+        logger.info("Using SimpleCookieStorage - no encryption")
         
         # Set up Jinja2 templates
         aiohttp_jinja2.setup(

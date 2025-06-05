@@ -180,3 +180,47 @@ class AdvancedMemoryManager(PersistentMemoryManager):
         # Memory consolidation parameters
         self.consolidation_threshold = config.get('consolidation_threshold', 0.3)
         self.importance_decay_rate = config.get('importance_decay_rate', 0.01)
+        
+        # Keep track of memory embeddings
+        self.memory_embeddings = {}
+        self.embedding_to_id = {}
+        
+    async def store_memory_with_embedding(self, content: str, embedding: np.ndarray, 
+                                        context: Dict[str, Any]) -> str:
+        """Store memory with pre-computed embedding"""
+        # Store the memory using parent method
+        memory_id = await self.store_memory(content, context)
+        
+        # Add to HNSW index
+        self.hnsw_index.add_items(
+            embedding.reshape(1, -1),
+            [len(self.memory_embeddings)]
+        )
+        
+        # Track embeddings
+        self.memory_embeddings[memory_id] = embedding
+        self.embedding_to_id[len(self.memory_embeddings) - 1] = memory_id
+        
+        return memory_id
+    
+    async def retrieve_memories_by_embedding(self, query_embedding: np.ndarray, 
+                                           k: int = 5) -> List[MemoryItem]:
+        """Retrieve memories using embedding similarity"""
+        if len(self.memory_embeddings) == 0:
+            return []
+        
+        # Search in HNSW index
+        labels, distances = self.hnsw_index.knn_query(
+            query_embedding.reshape(1, -1), 
+            k=min(k, len(self.memory_embeddings))
+        )
+        
+        # Get memory items
+        results = []
+        for idx in labels[0]:
+            if idx in self.embedding_to_id:
+                memory_id = self.embedding_to_id[idx]
+                if memory_id in self.memories:
+                    results.append(self.memories[memory_id])
+        
+        return results
