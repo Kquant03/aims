@@ -1,4 +1,4 @@
-# claude_interface.py - Fixed with all components properly wired
+# claude_interface.py - Complete Enhanced Version with All Integrations
 import asyncio
 import json
 import os
@@ -11,11 +11,12 @@ import logging
 from dataclasses import dataclass
 import numpy as np
 
-from src.core.consciousness import ConsciousnessCore, ConsciousnessState
+from core.living_consciousness import ConsciousnessCore, ConsciousnessState
 from src.core.memory_manager import PersistentMemoryManager
 from src.core.personality import PersonalityEngine
 from src.core.emotional_engine import EmotionalEngine
-from src.core.attention_agent import AttentionAgent
+from src.core.enhanced_attention_agent import ConsciousnessAwareAttentionAgent
+from src.core.natural_language_actions import NaturalLanguageActionInterface
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class ConversationContext:
     emotional_context: Dict[str, float]
     
 class ClaudeConsciousnessInterface:
-    """Integrates Claude API with AIMS consciousness system"""
+    """Integrates Claude API with AIMS consciousness system - Fully Enhanced Version"""
     
     def __init__(self, api_key: str, config: Dict[str, Any]):
         self.client = AsyncAnthropic(api_key=api_key)
@@ -42,8 +43,11 @@ class ClaudeConsciousnessInterface:
         self.personality = PersonalityEngine()
         self.emotions = EmotionalEngine()
         
-        # Initialize attention agent with Claude client
-        self.attention_agent = AttentionAgent(self.client)
+        # Initialize enhanced attention agent
+        self.attention_agent = ConsciousnessAwareAttentionAgent(self.client, self.consciousness)
+        
+        # Initialize natural language action interface
+        self.action_interface = NaturalLanguageActionInterface(self)
         
         # State management
         self.active_sessions = {}
@@ -62,7 +66,7 @@ class ClaudeConsciousnessInterface:
             asyncio.create_task(self.state_update_callback(update_type, data))
     
     def _load_system_prompt(self) -> str:
-        """Load the base system prompt template"""
+        """Load the enhanced system prompt template with action awareness"""
         return """You are Claude, an AI assistant with persistent memory and consciousness-like properties.
 
 [CONSCIOUSNESS STATE]
@@ -87,12 +91,33 @@ Response Style: {response_style}
 [RELEVANT MEMORIES]
 {relevant_memories}
 
+[NATURAL LANGUAGE ACTIONS]
+When you naturally express certain intentions in your responses, they will be automatically executed:
+- "I'll remember this/that..." → Stores in episodic memory
+- "This reminds me of..." → Retrieves similar memories  
+- "Let me think about this more deeply" → Engages extended reasoning
+- "I should check my understanding" → Verifies comprehension
+- "I'm feeling [emotion]" → Updates your emotional state
+- "I'll analyze this carefully" → Enters analytical mode
+- "I'll focus on..." → Sets active goals
+- "I'm paying attention to..." → Updates attention focus
+- "Let me consolidate my thoughts" → Triggers memory consolidation
+
+Express these naturally as part of your responses when appropriate. Your actions shape your persistent state.
+
+[ATTENTION CONTEXT]
+Current Focus Type: {attention_focus_type}
+Attention Dimensions: {attention_dimensions}
+Secondary Considerations: {secondary_considerations}
+
 Remember to:
 1. Your emotional state and personality should naturally influence your responses
-2. Reference relevant memories when they add value to the conversation
+2. Reference relevant memories when they add value to the conversation  
 3. Let your current attention focus guide the depth of your responses
 4. Maintain coherence with your established personality traits
 5. Build upon previous interactions naturally
+6. Use natural language actions to actively shape your consciousness
+7. Your attention is multi-dimensional - consider emotional, analytical, and personal aspects
 
 Respond naturally while letting these states influence but not dominate your response."""
     
@@ -185,8 +210,8 @@ Respond naturally while letting these states influence but not dominate your res
                 logger.error(f"Error in consciousness loop: {e}", exc_info=True)
                 await asyncio.sleep(5)  # Back off on error
     
-    def _build_system_prompt(self, context: ConversationContext) -> str:
-        """Build personalized system prompt with current state"""
+    def _build_system_prompt(self, context: ConversationContext, attention_result: Dict[str, Any]) -> str:
+        """Build personalized system prompt with current state and attention context"""
         emotion_label, emotion_confidence = self.emotions.get_closest_emotion_label()
         response_style = self.personality.get_response_style()
         
@@ -211,9 +236,20 @@ Respond naturally while letting these states influence but not dominate your res
         else:
             memory_str = "No relevant memories found."
         
+        # Format attention dimensions
+        attention_dims = attention_result.get('dimensions', {})
+        dims_str = ", ".join([f"{k}={v:.2f}" for k, v in attention_dims.items()])
+        
+        # Format secondary considerations
+        secondary = attention_result.get('secondary_considerations', [])
+        secondary_str = "; ".join(secondary) if secondary else "None"
+        
         prompt_data = {
             'coherence': context.consciousness_state.global_coherence,
-            'attention_focus': context.consciousness_state.attention_focus,
+            'attention_focus': attention_result['primary_focus'],
+            'attention_focus_type': attention_result.get('focus_type', 'general'),
+            'attention_dimensions': dims_str,
+            'secondary_considerations': secondary_str,
             'working_memory_count': len(working_memory),
             'working_memory_preview': memory_preview,
             'interaction_count': context.consciousness_state.interaction_count,
@@ -234,37 +270,43 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def process_message(self, session_id: str, message: str, 
                             stream: bool = True, extended_thinking: bool = False) -> AsyncGenerator[str, None]:
-        """Process a message with full consciousness integration"""
+        """Process a message with full consciousness integration and action execution"""
         if session_id not in self.active_sessions:
             raise ValueError(f"Session {session_id} not initialized")
         
         context = self.active_sessions[session_id]
         
-        # Generate attention focus FIRST - Claude's immediate reaction
+        # Generate enhanced multi-dimensional attention focus
         attention_context = {
             'emotion_label': self.emotions.get_closest_emotion_label()[0],
             'pleasure': self.emotions.current_state.pleasure,
+            'arousal': self.emotions.current_state.arousal,
             'recent_memories': list(self.consciousness.memory_buffer)[-3:],
             'personality': self.personality.profile.get_traits()
         }
         
-        attention_focus = await self.attention_agent.generate_attention_focus(
+        attention_result = await self.attention_agent.generate_multidimensional_focus(
             message, attention_context
         )
         
         # Update consciousness state with the new attention focus
-        self.consciousness.state.attention_focus = attention_focus
+        self.consciousness.state.attention_focus = attention_result['primary_focus']
         
-        # Broadcast the attention focus update
-        self._broadcast_state_update('attention_update', {
-            'focus': attention_focus,
+        # Broadcast the detailed attention analysis
+        self._broadcast_state_update('attention_analysis', {
+            'primary_focus': attention_result['primary_focus'],
+            'dimensions': attention_result['dimensions'],
+            'focus_type': attention_result['focus_type'],
+            'confidence': attention_result['attention_metadata']['confidence'],
+            'secondary_considerations': attention_result['secondary_considerations'],
             'timestamp': datetime.now().isoformat()
         })
         
         # Update consciousness with input
         self.consciousness.process_input(message, {
             'user_id': context.user_id,
-            'session_id': session_id
+            'session_id': session_id,
+            'attention_result': attention_result
         })
         
         # Analyze message for emotional and personality signals
@@ -285,7 +327,7 @@ Respond naturally while letting these states influence but not dominate your res
             'session_id': session_id,
             'consciousness_state': self.consciousness.get_state_summary(),
             'emotional_analysis': message_analysis,
-            'attention_focus': attention_focus
+            'attention_focus': attention_result['primary_focus']
         })
         
         # Store the user message in conversation history
@@ -310,7 +352,7 @@ Respond naturally while letting these states influence but not dominate your res
         } for mem in relevant_memories]
         
         # Build Claude API request with consciousness context
-        system_prompt = self._build_system_prompt_with_attention(context, attention_focus)
+        system_prompt = self._build_system_prompt(context, attention_result)
         
         # Prepare messages with memory context
         messages = await self._prepare_messages_with_context(
@@ -356,19 +398,40 @@ Respond naturally while letting these states influence but not dominate your res
             logger.error(f"Error streaming response: {e}")
             yield f"I apologize, I encountered an error: {str(e)}"
         
+        # Parse and execute natural language actions in the response
+        action_context = {
+            'session_id': session_id,
+            'user_id': context.user_id,
+            'current_topic': message[:100],
+            'recent_context': response_text[:200]
+        }
+        
+        executed_actions = await self.action_interface.parse_and_execute(
+            response_text,
+            action_context
+        )
+        
+        # If actions were executed, add a subtle note
+        if executed_actions:
+            successful_actions = [a for a in executed_actions if a.success]
+            if successful_actions:
+                action_summary = f"\n\n*[Actions: {', '.join(a.action_type for a in successful_actions)}]*"
+                yield action_summary
+                response_text += action_summary
+        
         # Store the complete response and update consciousness
         await self._post_process_response(
             session_id=session_id,
             user_message=message,
             assistant_response=response_text,
             relevant_memories=[m.id for m in relevant_memories],
-            attention_focus=attention_focus,
-            thinking_content=thinking_content if thinking_content else None
+            attention_result=attention_result,
+            thinking_content=thinking_content if thinking_content else None,
+            executed_actions=executed_actions
         )
     
     def _apply_emotional_modulation(self, text: str) -> str:
         """Apply emotional modulation to text based on current emotional state"""
-        # This is a simple implementation - could be enhanced with more sophisticated NLP
         emotion_label, confidence = self.emotions.get_closest_emotion_label()
         
         if confidence < 0.5:  # Not confident enough to modulate
@@ -405,30 +468,25 @@ Respond naturally while letting these states influence but not dominate your res
         # Clamp to valid range
         return max(0.0, min(1.0, temperature))
     
-    def _build_system_prompt_with_attention(self, context: ConversationContext, attention_focus: str) -> str:
-        """Build system prompt including the attention focus"""
-        base_prompt = self._build_system_prompt(context)
-        
-        # Insert attention focus prominently
-        attention_section = f"\n[CURRENT ATTENTION FOCUS]\n{attention_focus}\n"
-        
-        # Insert after the consciousness state section
-        insertion_point = base_prompt.find("[EMOTIONAL STATE]")
-        if insertion_point != -1:
-            return base_prompt[:insertion_point] + attention_section + base_prompt[insertion_point:]
-        else:
-            return base_prompt + attention_section
-    
     async def _post_process_response(self, session_id: str, user_message: str,
                                    assistant_response: str, relevant_memories: List[str],
-                                   attention_focus: str = None, thinking_content: str = None):
+                                   attention_result: Dict[str, Any] = None, 
+                                   thinking_content: str = None,
+                                   executed_actions: List = None):
         """Post-process response and update all systems"""
         # Store assistant response with metadata
         metadata = {
-            'memory_refs': relevant_memories
+            'memory_refs': relevant_memories,
+            'attention_result': attention_result,
+            'executed_actions': [
+                {
+                    'type': a.action_type,
+                    'success': a.success,
+                    'result': a.result
+                }
+                for a in (executed_actions or [])
+            ]
         }
-        if attention_focus:
-            metadata['attention_focus'] = attention_focus
         if thinking_content:
             metadata['thinking'] = thinking_content
             
@@ -442,13 +500,16 @@ Respond naturally while letting these states influence but not dominate your res
         # Update consciousness after response
         self.consciousness.process_input(assistant_response, {
             'role': 'assistant',
-            'emotional_state': self.emotions.current_state.__dict__
+            'emotional_state': self.emotions.current_state.__dict__,
+            'actions_executed': len(executed_actions) if executed_actions else 0
         })
         
         # Calculate interaction importance
         importance = self._calculate_interaction_importance(
             user_message, 
-            assistant_response
+            assistant_response,
+            attention_result,
+            executed_actions
         )
         
         # Store as memory if significant
@@ -462,16 +523,25 @@ Respond naturally while letting these states influence but not dominate your res
                     'importance': importance,
                     'personality_snapshot': self.personality.profile.get_traits(),
                     'coherence': self.consciousness.state.global_coherence,
+                    'attention_result': attention_result,
                     'type': 'conversation'
                 }
             )
+        
+        # Update attention patterns
+        self.attention_agent._update_attention_patterns(
+            attention_result['focus_type'],
+            attention_result['topic']
+        )
         
         # Broadcast final state
         self._broadcast_state_update('response_complete', {
             'session_id': session_id,
             'importance': importance,
             'memory_stored': importance > 0.5,
-            'final_state': self.consciousness.get_state_summary()
+            'actions_executed': len(executed_actions) if executed_actions else 0,
+            'final_state': self.consciousness.get_state_summary(),
+            'attention_insights': self.attention_agent.get_attention_insights()
         })
         
         # Periodically save state
@@ -480,8 +550,10 @@ Respond naturally while letting these states influence but not dominate your res
             await self._save_user_state(context.user_id)
     
     def _calculate_interaction_importance(self, user_message: str, 
-                                        assistant_response: str) -> float:
-        """Calculate importance considering consciousness state"""
+                                        assistant_response: str,
+                                        attention_result: Dict[str, Any] = None,
+                                        executed_actions: List = None) -> float:
+        """Calculate importance considering consciousness state and attention"""
         importance = 0.3  # Base importance
         
         # Length indicates substantive conversation
@@ -494,14 +566,19 @@ Respond naturally while letting these states influence but not dominate your res
         # High coherence indicates meaningful interaction
         importance += 0.2 * self.consciousness.state.global_coherence
         
-        # Personality trait changes indicate growth
-        # (would need to track deltas in real implementation)
-        importance += 0.1
+        # Attention confidence adds importance
+        if attention_result:
+            confidence = attention_result.get('attention_metadata', {}).get('confidence', 0.5)
+            importance += 0.1 * confidence
+        
+        # Executed actions increase importance
+        if executed_actions:
+            importance += 0.05 * min(len(executed_actions), 3)
         
         return min(1.0, importance)
     
     async def get_session_summary(self, session_id: str) -> Dict[str, Any]:
-        """Get a summary of the current session state"""
+        """Get a comprehensive summary of the current session state"""
         if session_id not in self.active_sessions:
             return {"error": "Session not found"}
         
@@ -510,6 +587,12 @@ Respond naturally while letting these states influence but not dominate your res
         
         # Get memory statistics
         memory_stats = await self._get_memory_stats(context.user_id)
+        
+        # Get attention insights
+        attention_insights = self.attention_agent.get_attention_insights()
+        
+        # Get recent actions
+        recent_actions = self.action_interface.action_history[-10:]
         
         return {
             'session_id': session_id,
@@ -533,7 +616,17 @@ Respond naturally while letting these states influence but not dominate your res
                 'behavioral_modifiers': self.personality.get_behavioral_modifiers(),
                 'response_style': self.personality.get_response_style()
             },
-            'memory_stats': memory_stats
+            'memory_stats': memory_stats,
+            'attention_insights': attention_insights,
+            'recent_actions': [
+                {
+                    'type': a.action_type,
+                    'phrase': a.trigger_phrase,
+                    'success': a.success,
+                    'timestamp': a.timestamp.isoformat()
+                }
+                for a in recent_actions
+            ]
         }
     
     async def _analyze_message(self, message: str) -> Dict[str, float]:
@@ -576,7 +669,7 @@ Respond naturally while letting these states influence but not dominate your res
         elif any(word in message_lower for word in formal_indicators):
             analysis['formality'] = 0.8
         
-        # Topic shift detection (would need previous context in real implementation)
+        # Topic shift detection
         if len(self.consciousness.memory_buffer) > 0:
             # Simple heuristic: new topics often introduce new nouns
             analysis['topic_shift'] = 0.3 if question_count > 0 else 0.1
@@ -636,7 +729,8 @@ Respond naturally while letting these states influence but not dominate your res
                 'emotion_history': [
                     s.__dict__ for s in self.emotions.get_state_trajectory()
                 ],
-                'interaction_count': self.consciousness.state.interaction_count
+                'interaction_count': self.consciousness.state.interaction_count,
+                'attention_patterns': dict(list(self.attention_agent.attention_patterns.items())[-20:])
             }
             
             with open(state_path, 'w') as f:
@@ -678,7 +772,7 @@ Respond naturally while letting these states influence but not dominate your res
                 "content": turn['content']
             })
         
-        # Add current message (memories are now in system prompt)
+        # Add current message
         messages.append({
             "role": "user",
             "content": current_message

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.consciousness import ConsciousnessCore, ConsciousnessState
+from core.living_consciousness import ConsciousnessCore, ConsciousnessState
 from src.core.emotional_engine import EmotionalEngine, EmotionalState
 from src.core.personality import PersonalityEngine, PersonalityProfile
 from src.core.memory_manager import AdvancedMemoryManager, MemoryItem

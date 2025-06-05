@@ -35,7 +35,7 @@ class StateManager:
         state_id = timestamp.strftime('%Y%m%d_%H%M%S')
         
         # Import ConsciousnessState here to avoid circular imports
-        from src.core.consciousness import ConsciousnessState
+        from core.living_consciousness import ConsciousnessState
         
         # Gather all state components
         complete_state = {
@@ -102,7 +102,7 @@ class StateManager:
         """Load a complete system state"""
         try:
             # Import ConsciousnessState here to avoid circular imports
-            from src.core.consciousness import ConsciousnessState
+            from core.living_consciousness import ConsciousnessState
             
             # Find state file
             state_file = self._find_state_file(state_id)

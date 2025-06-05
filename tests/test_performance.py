@@ -14,7 +14,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.consciousness import ConsciousnessCore, ConsciousnessAttentionMechanism
+from core.living_consciousness import ConsciousnessCore, ConsciousnessAttentionMechanism
 from src.core.memory_manager import AdvancedMemoryManager
 from src.utils.gpu_optimizer import GPUOptimizer
 
