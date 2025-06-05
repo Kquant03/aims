@@ -9,6 +9,7 @@ import aiofiles
 from aiohttp import web
 import aiohttp_cors
 from aiohttp_session import setup, get_session
+from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from aiohttp_session import SimpleCookieStorage
 import jinja2
 import aiohttp_jinja2
@@ -20,6 +21,7 @@ from src.api.websocket_server import ConsciousnessWebSocketServer
 from src.api.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
+
 
 class AIMSWebInterface:
     """Main web interface for AIMS"""
@@ -109,7 +111,7 @@ class AIMSWebInterface:
         logger.info("Starting AIMS Web Interface")
         
         # Start WebSocket server in background
-        asyncio.create_task(self.ws_server.start())
+        self.ws_task = asyncio.create_task(self.ws_server.start())
         
         # Start automatic backup loop
         asyncio.create_task(
@@ -121,6 +123,22 @@ class AIMSWebInterface:
     async def on_cleanup(self, app):
         """Cleanup on shutdown"""
         logger.info("Shutting down AIMS Web Interface")
+        
+        # Cancel tasks properly
+        if hasattr(self, 'ws_task'):
+            self.ws_task.cancel()
+            try:
+                await self.ws_task
+            except asyncio.CancelledError:
+                pass
+        
+        if hasattr(self, 'backup_task'):
+            self.backup_task.cancel()
+            try:
+                await self.backup_task
+            except asyncio.CancelledError:
+                pass
+
         await self.claude_interface.shutdown()
     
     @aiohttp_jinja2.template('index.html')

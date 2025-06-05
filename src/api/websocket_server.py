@@ -1,5 +1,6 @@
 # websocket_server.py - Enhanced WebSocket Server with Reconnection and Queuing
 import asyncio
+import socket
 import json
 import logging
 import time
@@ -9,6 +10,19 @@ from collections import deque
 import websockets
 from websockets.server import WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
+
+
+def find_free_port(start_port: int, max_attempts: int = 10) -> int:
+    """Find a free port starting from start_port"""
+    for i in range(max_attempts):
+        port = start_port + i
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError(f"Could not find free port in range {start_port}-{start_port + max_attempts}")
 
 logger = logging.getLogger(__name__)
 
@@ -346,20 +360,35 @@ class ConsciousnessWebSocketServer:
     
     async def start(self):
         """Start the WebSocket server with all background tasks"""
-        # Start the WebSocket server
-        server = await websockets.serve(
-            self.handle_client, 
-            self.host, 
-            self.port,
-            ping_interval=self.ping_interval,
-            ping_timeout=self.connection_timeout
-        )
+        # Find available port if default is in use
+        port = self.port
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                # Try to start server
+                server = await websockets.serve(
+                    self.handle_client, 
+                    self.host, 
+                    port,
+                    ping_interval=self.ping_interval,
+                    ping_timeout=self.connection_timeout
+                )
+                break
+            except OSError as e:
+                if "address already in use" in str(e).lower() and attempt < max_retries - 1:
+                    logger.warning(f"Port {port} is already in use, finding alternative...")
+                    port = find_free_port(port + 1)
+                    self.port = port
+                    logger.info(f"Using alternative port: {port}")
+                else:
+                    raise
         
         # Start background tasks
         update_task = asyncio.create_task(self.periodic_update_loop())
         health_task = asyncio.create_task(self.connection_health_monitor())
         
-        logger.info(f"WebSocket server started on ws://{self.host}:{self.port}")
+        logger.info(f"WebSocket server started on ws://{self.host}:{port}")
         
         # Keep server running
         await asyncio.Future()
