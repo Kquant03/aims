@@ -8,12 +8,17 @@ from typing import Optional
 import aiofiles
 from aiohttp import web
 import aiohttp_cors
-from aiohttp_session import setup, get_session, SimpleCookieStorage, Session
+from aiohttp_session import setup, get_session
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
+from aiohttp_session import SimpleCookieStorage
 import jinja2
 import aiohttp_jinja2
 from pathlib import Path
 import logging
+
+from aiohttp_session.cookie_storage import SimpleCookieStorage
+from aiohttp_session import Session
+import json
 
 from src.api.claude_interface import ClaudeConsciousnessInterface
 from src.api.websocket_server import ConsciousnessWebSocketServer
