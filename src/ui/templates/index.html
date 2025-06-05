@@ -46,6 +46,7 @@
         .metric-value {
             font-size: 24px;
             font-weight: 300;
+            transition: all 0.3s ease;
         }
         
         .progress-bar {
@@ -179,36 +180,119 @@
             font-weight: 500;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         }
+        
+        /* Working Memory Display */
+        .working-memory {
+            margin-top: 20px;
+            padding: 10px;
+            background: #111;
+            border-radius: 8px;
+        }
+        
+        .memory-item {
+            font-size: 11px;
+            color: #888;
+            margin: 2px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* Connection Status */
+        .connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            transition: background 0.3s;
+        }
+        
+        .status-dot.connected {
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        /* Personality Traits */
+        .personality-traits {
+            margin-top: 20px;
+        }
+        
+        .trait {
+            margin-bottom: 10px;
+        }
+        
+        .trait-name {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 3px;
+        }
+        
+        .trait-bar {
+            width: 100%;
+            height: 3px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .trait-fill {
+            height: 100%;
+            background: #0066cc;
+            transition: width 0.5s ease;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Connection Status -->
+        <div class="connection-status">
+            <span class="status-dot" id="connectionDot"></span>
+            <span id="connectionText">Connecting...</span>
+        </div>
+        
         <!-- Consciousness Monitoring Panel -->
         <div class="consciousness-panel">
             <h2 style="margin-bottom: 20px; font-weight: 300;">Consciousness State</h2>
             
             <div class="emotion-indicator">
                 <div class="emotion-gradient" id="emotionGradient"></div>
-                <div class="emotion-label" id="emotionLabel">Neutral</div>
+                <div class="emotion-label" id="emotionLabel">Initializing...</div>
             </div>
             
             <div class="metric">
                 <div class="metric-label">Coherence</div>
-                <div class="metric-value" id="coherenceValue">1.00</div>
+                <div class="metric-value" id="coherenceValue">-.--</div>
                 <div class="progress-bar">
-                    <div class="progress-fill" id="coherenceBar" style="width: 100%"></div>
+                    <div class="progress-fill" id="coherenceBar" style="width: 0%"></div>
                 </div>
             </div>
             
             <div class="metric">
                 <div class="metric-label">Attention Focus</div>
-                <div class="metric-value" id="attentionFocus" style="font-size: 14px;">Initialization</div>
+                <div class="metric-value" id="attentionFocus" style="font-size: 14px;">-</div>
             </div>
             
             <div class="metric">
                 <div class="metric-label">Working Memory</div>
                 <div class="metric-value" id="workingMemory">0</div>
                 <div class="metric-label">items</div>
+                <div class="working-memory" id="workingMemoryList"></div>
             </div>
             
             <div class="metric">
@@ -219,6 +303,40 @@
             <div class="metric">
                 <div class="metric-label">Total Memories</div>
                 <div class="metric-value" id="totalMemories">0</div>
+            </div>
+            
+            <div class="personality-traits">
+                <h3 style="font-size: 14px; margin-bottom: 10px; font-weight: 400;">Personality</h3>
+                <div class="trait">
+                    <div class="trait-name">Openness</div>
+                    <div class="trait-bar">
+                        <div class="trait-fill" id="traitOpenness" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="trait">
+                    <div class="trait-name">Conscientiousness</div>
+                    <div class="trait-bar">
+                        <div class="trait-fill" id="traitConscientiousness" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="trait">
+                    <div class="trait-name">Extraversion</div>
+                    <div class="trait-bar">
+                        <div class="trait-fill" id="traitExtraversion" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="trait">
+                    <div class="trait-name">Agreeableness</div>
+                    <div class="trait-bar">
+                        <div class="trait-fill" id="traitAgreeableness" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="trait">
+                    <div class="trait-name">Neuroticism</div>
+                    <div class="trait-bar">
+                        <div class="trait-fill" id="traitNeuroticism" style="width: 0%"></div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -245,24 +363,56 @@
         // WebSocket connection
         let ws = null;
         const wsUrl = "{{ ws_url }}";
+        let reconnectAttempts = 0;
+        let clientId = null;
+        
+        // UI Elements
+        const connectionDot = document.getElementById('connectionDot');
+        const connectionText = document.getElementById('connectionText');
         
         // Connect to WebSocket
         function connectWebSocket() {
-            ws = new WebSocket(wsUrl);
+            const url = clientId ? `${wsUrl}?client_id=${clientId}` : wsUrl;
+            ws = new WebSocket(url);
             
             ws.onopen = () => {
                 console.log('Connected to consciousness stream');
+                connectionDot.classList.add('connected');
+                connectionText.textContent = 'Connected';
+                reconnectAttempts = 0;
+                
+                // Request initial state
                 ws.send(JSON.stringify({ type: 'get_state' }));
+                ws.send(JSON.stringify({ type: 'get_memory_stats' }));
+                ws.send(JSON.stringify({ type: 'get_personality' }));
             };
             
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                updateConsciousnessDisplay(data);
+                const message = JSON.parse(event.data);
+                
+                // Save client ID for reconnection
+                if (message.type === 'connection_established') {
+                    clientId = message.client_id;
+                    localStorage.setItem('aims_client_id', clientId);
+                } else {
+                    updateConsciousnessDisplay(message);
+                }
             };
             
             ws.onclose = () => {
                 console.log('Disconnected from consciousness stream');
-                setTimeout(connectWebSocket, 3000); // Reconnect after 3 seconds
+                connectionDot.classList.remove('connected');
+                connectionText.textContent = 'Disconnected';
+                
+                // Exponential backoff reconnection
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                reconnectAttempts++;
+                
+                setTimeout(connectWebSocket, delay);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
             };
         }
         
@@ -272,23 +422,63 @@
                 const state = data.data;
                 
                 // Update coherence
-                document.getElementById('coherenceValue').textContent = state.coherence.toFixed(2);
-                document.getElementById('coherenceBar').style.width = `${state.coherence * 100}%`;
+                const coherence = state.coherence || 0;
+                document.getElementById('coherenceValue').textContent = coherence.toFixed(2);
+                document.getElementById('coherenceBar').style.width = `${coherence * 100}%`;
                 
                 // Update emotion
-                document.getElementById('emotionLabel').textContent = state.emotion_label;
-                const emotionColor = `rgb(${Math.floor(state.emotional_state.pleasure * 255)}, 
-                                         ${Math.floor((1 - state.emotional_state.arousal) * 255)}, 
-                                         ${Math.floor(state.emotional_state.dominance * 255)})`;
-                document.getElementById('emotionGradient').style.background = 
-                    `radial-gradient(circle, ${emotionColor}, transparent)`;
+                const emotionLabel = state.emotion_label || 'neutral';
+                document.getElementById('emotionLabel').textContent = emotionLabel;
+                
+                // Update emotion color based on PAD values
+                if (state.emotional_state) {
+                    const p = state.emotional_state.pleasure || 0.5;
+                    const a = state.emotional_state.arousal || 0.5;
+                    const d = state.emotional_state.dominance || 0.5;
+                    
+                    const r = Math.floor(p * 255);
+                    const g = Math.floor((1 - a) * 255);
+                    const b = Math.floor(d * 255);
+                    
+                    document.getElementById('emotionGradient').style.background = 
+                        `radial-gradient(circle, rgb(${r}, ${g}, ${b}), transparent)`;
+                }
                 
                 // Update other metrics
-                document.getElementById('attentionFocus').textContent = state.attention_focus;
-                document.getElementById('workingMemory').textContent = state.working_memory_size || 0;
-                document.getElementById('interactionCount').textContent = state.interaction_count;
+                document.getElementById('attentionFocus').textContent = 
+                    state.attention_focus || 'none';
+                document.getElementById('workingMemory').textContent = 
+                    state.working_memory_size || 0;
+                document.getElementById('interactionCount').textContent = 
+                    state.interaction_count || 0;
+                
+                // Update working memory list
+                if (state.working_memory && Array.isArray(state.working_memory)) {
+                    const memoryList = document.getElementById('workingMemoryList');
+                    memoryList.innerHTML = state.working_memory
+                        .slice(-5)  // Show last 5 items
+                        .map(item => `<div class="memory-item">${item}</div>`)
+                        .join('');
+                }
+                
             } else if (data.type === 'memory_stats') {
-                document.getElementById('totalMemories').textContent = data.data.total_memories;
+                document.getElementById('totalMemories').textContent = 
+                    data.data.total_memories || 0;
+                    
+            } else if (data.type === 'personality_update') {
+                const traits = data.data.traits;
+                if (traits) {
+                    document.getElementById('traitOpenness').style.width = 
+                        `${(traits.openness || 0) * 100}%`;
+                    document.getElementById('traitConscientiousness').style.width = 
+                        `${(traits.conscientiousness || 0) * 100}%`;
+                    document.getElementById('traitExtraversion').style.width = 
+                        `${(traits.extraversion || 0) * 100}%`;
+                    document.getElementById('traitAgreeableness').style.width = 
+                        `${(traits.agreeableness || 0) * 100}%`;
+                    document.getElementById('traitNeuroticism').style.width = 
+                        `${(traits.neuroticism || 0) * 100}%`;
+                }
             }
         }
         
@@ -331,6 +521,7 @@
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'get_state' }));
                     ws.send(JSON.stringify({ type: 'get_memory_stats' }));
+                    ws.send(JSON.stringify({ type: 'get_personality' }));
                 }
                 
             } catch (error) {
@@ -369,8 +560,18 @@
         });
         
         // Initialize
+        // Try to restore client ID
+        clientId = localStorage.getItem('aims_client_id');
+        
         connectWebSocket();
         messageInput.focus();
+        
+        // Heartbeat to keep connection alive
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
     </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# websocket_server.py - Enhanced WebSocket Server with Reconnection and Queuing
+# Fixed websocket_server.py - Real state broadcasting
 import asyncio
 import socket
 import json
@@ -11,6 +11,7 @@ import websockets
 from websockets.server import WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
+logger = logging.getLogger(__name__)
 
 def find_free_port(start_port: int, max_attempts: int = 10) -> int:
     """Find a free port starting from start_port"""
@@ -23,8 +24,6 @@ def find_free_port(start_port: int, max_attempts: int = 10) -> int:
         except OSError:
             continue
     raise RuntimeError(f"Could not find free port in range {start_port}-{start_port + max_attempts}")
-
-logger = logging.getLogger(__name__)
 
 class MessageQueue:
     """Message queue for handling offline clients"""
@@ -87,7 +86,7 @@ class ClientConnection:
         return (time.time() - self.last_pong) < timeout
 
 class ConsciousnessWebSocketServer:
-    """Enhanced WebSocket server with reconnection and queuing support"""
+    """WebSocket server that broadcasts real consciousness state"""
     
     def __init__(self, claude_interface, host='localhost', port=8765):
         self.claude_interface = claude_interface
@@ -102,6 +101,20 @@ class ConsciousnessWebSocketServer:
         # Rate limiting
         self.rate_limits = {}
         self.max_messages_per_minute = 60
+        
+        # Set callback in claude_interface
+        self.claude_interface.set_state_update_callback(self.handle_state_update)
+        
+    async def handle_state_update(self, update_type: str, data: Dict[str, Any]):
+        """Handle state updates from consciousness system"""
+        message = {
+            'type': update_type,
+            'timestamp': datetime.now().isoformat(),
+            'data': data
+        }
+        
+        # Broadcast to all connected clients
+        await self.broadcast_update(update_type, data)
         
     async def register_client(self, websocket: WebSocketServerProtocol, client_id: Optional[str] = None):
         """Register a new WebSocket client with reconnection support"""
@@ -150,18 +163,25 @@ class ConsciousnessWebSocketServer:
     async def send_current_state(self, connection: ClientConnection):
         """Send current consciousness state to a client"""
         try:
+            # Get real state from consciousness system
+            consciousness_state = self.claude_interface.consciousness.get_state_summary()
+            emotion_label, emotion_confidence = self.claude_interface.emotions.get_closest_emotion_label()
+            
             state_data = {
                 'type': 'consciousness_update',
                 'timestamp': datetime.now().isoformat(),
                 'client_id': connection.client_id,
                 'data': {
-                    'coherence': self.claude_interface.consciousness.state.global_coherence,
-                    'attention_focus': self.claude_interface.consciousness.state.attention_focus,
-                    'emotional_state': self.claude_interface.emotions.current_state.__dict__,
-                    'emotion_label': self.claude_interface.emotions.get_closest_emotion_label()[0],
-                    'personality_traits': self.claude_interface.personality.profile.get_traits(),
-                    'working_memory': list(self.claude_interface.consciousness.memory_buffer),
-                    'interaction_count': self.claude_interface.consciousness.state.interaction_count
+                    'coherence': consciousness_state['coherence'],
+                    'attention_focus': consciousness_state['attention'],
+                    'emotional_state': consciousness_state['emotion'],
+                    'emotion_label': emotion_label,
+                    'emotion_confidence': emotion_confidence,
+                    'personality_traits': consciousness_state['personality'],
+                    'working_memory': consciousness_state['recent_memories'],
+                    'working_memory_size': len(consciousness_state['recent_memories']),
+                    'interaction_count': consciousness_state['interaction_count'],
+                    'goals': consciousness_state['goals']
                 }
             }
             
@@ -172,7 +192,7 @@ class ConsciousnessWebSocketServer:
             logger.error(f"Error sending state update: {e}")
     
     async def broadcast_update(self, update_type: str, data: Dict[str, Any], exclude_client: Optional[str] = None):
-        """Broadcast an update to all connected clients with queuing for offline clients"""
+        """Broadcast an update to all connected clients"""
         message = {
             'type': update_type,
             'timestamp': datetime.now().isoformat(),
@@ -200,7 +220,7 @@ class ConsciousnessWebSocketServer:
             await self.unregister_client(client_id)
     
     async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
-        """Handle a WebSocket client connection with reconnection support"""
+        """Handle a WebSocket client connection"""
         client_id = None
         
         try:
@@ -286,6 +306,17 @@ class ConsciousnessWebSocketServer:
                              'arousal': s.arousal, 
                              'dominance': s.dominance} for s in trajectory]
                 }))
+            
+            elif message_type == 'get_personality':
+                traits = self.claude_interface.personality.profile.get_traits()
+                modifiers = self.claude_interface.personality.get_behavioral_modifiers()
+                await connection.websocket.send(json.dumps({
+                    'type': 'personality_update',
+                    'data': {
+                        'traits': traits,
+                        'modifiers': modifiers
+                    }
+                }))
                 
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON received from {client_id}: {message}")
@@ -315,13 +346,21 @@ class ConsciousnessWebSocketServer:
         """Send periodic updates to all clients"""
         while True:
             try:
-                await self.broadcast_update('consciousness_update', {
-                    'coherence': self.claude_interface.consciousness.state.global_coherence,
-                    'attention_focus': self.claude_interface.consciousness.state.attention_focus,
-                    'emotional_state': self.claude_interface.emotions.current_state.__dict__,
-                    'emotion_label': self.claude_interface.emotions.get_closest_emotion_label()[0],
-                    'working_memory_size': len(self.claude_interface.consciousness.memory_buffer)
-                })
+                # Only send if we have clients
+                if self.connections:
+                    # Get current state from consciousness system
+                    consciousness_state = self.claude_interface.consciousness.get_state_summary()
+                    emotion_label, emotion_confidence = self.claude_interface.emotions.get_closest_emotion_label()
+                    
+                    await self.broadcast_update('consciousness_update', {
+                        'coherence': consciousness_state['coherence'],
+                        'attention_focus': consciousness_state['attention'],
+                        'emotional_state': consciousness_state['emotion'],
+                        'emotion_label': emotion_label,
+                        'emotion_confidence': emotion_confidence,
+                        'working_memory_size': len(consciousness_state['recent_memories']),
+                        'interaction_count': consciousness_state['interaction_count']
+                    })
                 
                 await asyncio.sleep(self.update_interval)
             except Exception as e:

@@ -1,4 +1,4 @@
-# web_interface.py - Main Web Application Interface
+# Fixed web_interface.py - Properly wired components
 import os
 import asyncio
 import json
@@ -14,6 +14,8 @@ import jinja2
 import aiohttp_jinja2
 from pathlib import Path
 import logging
+import base64
+import yaml
 
 from src.api.claude_interface import ClaudeConsciousnessInterface
 from src.api.websocket_server import ConsciousnessWebSocketServer
@@ -21,9 +23,21 @@ from src.api.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
 
+class SafeSimpleCookieStorage(SimpleCookieStorage):
+    """Cookie storage with automatic error recovery"""
+    
+    async def load_session(self, request):
+        """Load session with error handling for corrupted cookies"""
+        try:
+            return await super().load_session(request)
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            # Log the error but don't crash
+            logger.warning(f"Corrupted session cookie detected: {e}")
+            # Return a fresh session
+            return Session(identity=None, data={}, new=True, max_age=None)
 
 class AIMSWebInterface:
-    """Main web interface for AIMS"""
+    """Main web interface for AIMS - properly wired"""
     
     def __init__(self, config_path: str = "configs/default_config.yaml"):
         self.config = self._load_config(config_path)
@@ -32,12 +46,11 @@ class AIMSWebInterface:
         
     def _load_config(self, config_path: str) -> dict:
         """Load configuration from YAML file"""
-        import yaml
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
     
     def setup_app(self):
-        """Set up the web application"""
+        """Set up the web application with proper component wiring"""
         # Initialize Claude interface
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         if not api_key:
@@ -46,29 +59,14 @@ class AIMSWebInterface:
         self.claude_interface = ClaudeConsciousnessInterface(api_key, self.config)
         self.state_manager = StateManager(self.config.get('state_management', {}))
         
-        # Set up WebSocket server
+        # Set up WebSocket server with claude_interface
         self.ws_server = ConsciousnessWebSocketServer(
             self.claude_interface,
             host='0.0.0.0',
             port=8765
         )
         
-                # Replace it with:
-
-        class SafeSimpleCookieStorage(SimpleCookieStorage):
-            """Cookie storage with automatic error recovery"""
-            
-            async def load_session(self, request):
-                """Load session with error handling for corrupted cookies"""
-                try:
-                    return await super().load_session(request)
-                except (json.JSONDecodeError, ValueError, KeyError) as e:
-                    # Log the error but don't crash
-                    logger.warning(f"Corrupted session cookie detected: {e}")
-                    # Return a fresh session
-                    return Session(identity=None, data={}, new=True, max_age=None)
-
-        # Then use it:
+        # Use safe cookie storage
         setup(self.app, SafeSimpleCookieStorage())
         logger.info("Using SafeSimpleCookieStorage with error recovery")
         
@@ -116,19 +114,25 @@ class AIMSWebInterface:
         # File upload
         self.app.router.add_post('/api/upload', self.upload_handler)
         
+        # Health check
+        self.app.router.add_get('/health', self.health_handler)
+        
         # Static files
         static_path = Path(__file__).parent / 'static'
         self.app.router.add_static('/static', static_path, name='static')
     
     async def on_startup(self, app):
-        """Initialize services on startup"""
+        """Initialize services on startup with proper connections"""
         logger.info("Starting AIMS Web Interface")
+        
+        # Start consciousness loop in Claude interface
+        # This is now handled in initialize_session
         
         # Start WebSocket server in background
         self.ws_task = asyncio.create_task(self.ws_server.start())
         
         # Start automatic backup loop
-        asyncio.create_task(
+        self.backup_task = asyncio.create_task(
             self.state_manager.automatic_backup_loop(self.claude_interface)
         )
         
@@ -164,13 +168,23 @@ class AIMSWebInterface:
         if 'user_id' not in session:
             session['user_id'] = str(uuid.uuid4())
         
+        # WebSocket URL should use the actual port
+        ws_url = f"ws://{request.host.split(':')[0]}:{self.ws_server.port}"
+        
         return {
             'user_id': session['user_id'],
-            'ws_url': f"ws://{request.host}/ws"
+            'ws_url': ws_url
         }
     
+    async def health_handler(self, request):
+        """Health check endpoint"""
+        return web.json_response({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat()
+        })
+    
     async def chat_handler(self, request):
-        """Handle chat messages"""
+        """Handle chat messages with full consciousness integration"""
         try:
             data = await request.json()
             message = data.get('message', '').strip()
@@ -203,11 +217,11 @@ class AIMSWebInterface:
             })
             
         except Exception as e:
-            logger.error(f"Error in chat handler: {e}")
+            logger.error(f"Error in chat handler: {e}", exc_info=True)
             return web.json_response({'error': str(e)}, status=500)
     
     async def session_handler(self, request):
-        """Get current session info"""
+        """Get current session info with real data"""
         session = await get_session(request)
         session_id = session.get('session_id')
         
@@ -223,17 +237,38 @@ class AIMSWebInterface:
         
         # Add emotional information
         emotion_label, confidence = self.claude_interface.emotions.get_closest_emotion_label()
-        state_summary['emotion'] = {
-            'label': emotion_label,
-            'confidence': confidence,
-            'color': self.claude_interface.emotions.get_emotional_color()
-        }
+        emotional_color = self.claude_interface.emotions.get_emotional_color()
+        
+        state_summary.update({
+            'emotion': {
+                **state_summary['emotion'],
+                'label': emotion_label,
+                'confidence': confidence,
+                'color': emotional_color,
+                'intensity': self.claude_interface.emotions.get_emotional_intensity()
+            },
+            'personality': {
+                'traits': self.claude_interface.personality.profile.get_traits(),
+                'modifiers': self.claude_interface.personality.get_behavioral_modifiers()
+            }
+        })
         
         return web.json_response(state_summary)
     
     async def memory_stats_handler(self, request):
         """Get memory statistics"""
+        # Get session to identify user
+        session = await get_session(request)
+        user_id = session.get('user_id', 'anonymous')
+        
+        # Get general stats
         stats = self.claude_interface.memory_manager.get_statistics()
+        
+        # Add user-specific stats if we have a session
+        if session.get('session_id'):
+            user_stats = await self.claude_interface._get_memory_stats(user_id)
+            stats.update(user_stats)
+        
         return web.json_response(stats)
     
     async def save_state_handler(self, request):
@@ -316,8 +351,6 @@ class AIMSWebInterface:
 
 
 if __name__ == '__main__':
-    # Save the template
-    
     # Run the application
     app = AIMSWebInterface()
     app.run()
