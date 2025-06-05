@@ -1,4 +1,4 @@
-# Fixed claude_interface.py - Properly wired consciousness system
+# Fixed claude_interface.py - Properly wired consciousness system with correct streaming
 import asyncio
 import json
 import os
@@ -10,6 +10,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 import numpy as np
+from src.core.attention_agent import AttentionAgent
 
 from src.core.consciousness import ConsciousnessCore, ConsciousnessState
 from src.core.memory_manager import PersistentMemoryManager
@@ -229,12 +230,33 @@ Respond naturally while letting these states influence but not dominate your res
         return self.system_prompt_template.format(**prompt_data)
     
     async def process_message(self, session_id: str, message: str, 
-                            stream: bool = True) -> AsyncGenerator[str, None]:
+                            stream: bool = True, extended_thinking: bool = False) -> AsyncGenerator[str, None]:
         """Process a message with full consciousness integration"""
         if session_id not in self.active_sessions:
             raise ValueError(f"Session {session_id} not initialized")
         
         context = self.active_sessions[session_id]
+        
+        # Generate attention focus FIRST - Claude's immediate reaction
+        attention_context = {
+            'emotion_label': self.emotions.get_closest_emotion_label()[0],
+            'pleasure': self.emotions.current_state.pleasure,
+            'recent_memories': list(self.consciousness.memory_buffer)[-3:],
+            'personality': self.personality.profile.get_traits()
+        }
+        
+        attention_focus = await self.attention_agent.generate_attention_focus(
+            message, attention_context
+        )
+        
+        # Update consciousness state with the new attention focus
+        self.consciousness.state.attention_focus = attention_focus
+        
+        # Broadcast the attention focus update
+        self._broadcast_state_update('attention_update', {
+            'focus': attention_focus,
+            'timestamp': datetime.now().isoformat()
+        })
         
         # Update consciousness with input
         self.consciousness.process_input(message, {
@@ -259,7 +281,8 @@ Respond naturally while letting these states influence but not dominate your res
         self._broadcast_state_update('message_processed', {
             'session_id': session_id,
             'consciousness_state': self.consciousness.get_state_summary(),
-            'emotional_analysis': message_analysis
+            'emotional_analysis': message_analysis,
+            'attention_focus': attention_focus
         })
         
         # Store the user message in conversation history
@@ -284,7 +307,7 @@ Respond naturally while letting these states influence but not dominate your res
         } for mem in relevant_memories]
         
         # Build Claude API request with consciousness context
-        system_prompt = self._build_system_prompt(context)
+        system_prompt = self._build_system_prompt_with_attention(context, attention_focus)
         
         # Prepare messages with memory context
         messages = await self._prepare_messages_with_context(
@@ -299,73 +322,92 @@ Respond naturally while letting these states influence but not dominate your res
         # Calculate temperature based on emotional state and personality
         temperature = self._calculate_temperature(response_style)
         
+        # Configure extended thinking if requested
+        thinking_config = {}
+        if extended_thinking:
+            thinking_config = {
+                'thinking': {
+                    'enabled': True,
+                    'budget': 2048  # Tokens for thinking
+                }
+            }
+        
         # Stream response from Claude
         response_text = ""
+        thinking_content = ""
         
-        # Use the streaming API properly
-        stream_response = await self.client.messages.create(
+        # Using messages.stream() context manager (recommended approach)
+        async with self.client.messages.stream(
             model=self.config.get('api', {}).get('claude', {}).get('model', 'claude-3-sonnet-20240229'),
             messages=messages,
             system=system_prompt,
             max_tokens=self.config.get('api', {}).get('claude', {}).get('max_tokens', 4096),
             temperature=temperature,
-            stream=True
-        )
-        
-        # Process the stream
-        async for event in stream_response:
-            if event.type == 'content_block_delta':
-                chunk = event.delta.text
-                response_text += chunk
-                
-                # Apply real-time emotional modulation if high intensity
-                if self.emotions.get_emotional_intensity() > 0.7:
-                    chunk = self._apply_emotional_modulation(chunk)
-                
-                yield chunk
+            **thinking_config  # Add thinking configuration if enabled
+        ) as stream:
+            # Process the stream
+            async for event in stream:
+                if hasattr(event, 'type'):
+                    # Handle thinking events if extended thinking is enabled
+                    if event.type == 'thinking_delta' and hasattr(event, 'delta'):
+                        thinking_content += event.delta.text
+                    # Handle regular content
+                    elif event.type == 'content_block_delta' and hasattr(event, 'delta'):
+                        if hasattr(event.delta, 'text'):
+                            text = event.delta.text
+                            response_text += text
+                            
+                            # Apply real-time emotional modulation if high intensity
+                            if self.emotions.get_emotional_intensity() > 0.7:
+                                text = self._apply_emotional_modulation(text)
+                            
+                            yield text
         
         # Store the complete response and update consciousness
         await self._post_process_response(
             session_id=session_id,
             user_message=message,
             assistant_response=response_text,
-            relevant_memories=[m.id for m in relevant_memories]
+            relevant_memories=[m.id for m in relevant_memories],
+            attention_focus=attention_focus,
+            thinking_content=thinking_content if extended_thinking else None
         )
+        
+        # Return attention focus and thinking in the response metadata
+        # This will be handled by the web interface
     
-    def _calculate_temperature(self, response_style: Dict) -> float:
-        """Calculate temperature based on personality and emotional state"""
-        base_temp = response_style.get('temperature', 0.7)
+    def _build_system_prompt_with_attention(self, context: ConversationContext, attention_focus: str) -> str:
+        """Build system prompt including the attention focus"""
+        base_prompt = self._build_system_prompt(context)
         
-        # Adjust based on emotional arousal
-        arousal_modifier = (self.emotions.current_state.arousal - 0.5) * 0.2
+        # Insert attention focus prominently
+        attention_section = f"\n[CURRENT ATTENTION FOCUS]\n{attention_focus}\n"
         
-        # Adjust based on coherence (lower coherence = more creative/chaotic)
-        coherence_modifier = (1.0 - self.consciousness.state.global_coherence) * 0.1
-        
-        final_temp = max(0.1, min(1.0, base_temp + arousal_modifier + coherence_modifier))
-        return final_temp
-    
-    def _apply_emotional_modulation(self, text_chunk: str) -> str:
-        """Apply subtle emotional modulation to text in real-time"""
-        # This is a placeholder for more sophisticated modulation
-        # In practice, you might adjust punctuation, emphasis, etc.
-        emotion_label = self.emotions.get_closest_emotion_label()[0]
-        
-        if emotion_label == 'excitement' and '!' not in text_chunk and text_chunk.strip().endswith('.'):
-            # Add some excitement
-            return text_chunk.rstrip('.') + '!'
-        
-        return text_chunk
+        # Insert after the consciousness state section
+        insertion_point = base_prompt.find("[EMOTIONAL STATE]")
+        if insertion_point != -1:
+            return base_prompt[:insertion_point] + attention_section + base_prompt[insertion_point:]
+        else:
+            return base_prompt + attention_section
     
     async def _post_process_response(self, session_id: str, user_message: str,
-                                   assistant_response: str, relevant_memories: List[str]):
+                                   assistant_response: str, relevant_memories: List[str],
+                                   attention_focus: str = None, thinking_content: str = None):
         """Post-process response and update all systems"""
-        # Store assistant response
+        # Store assistant response with metadata
+        metadata = {
+            'memory_refs': relevant_memories
+        }
+        if attention_focus:
+            metadata['attention_focus'] = attention_focus
+        if thinking_content:
+            metadata['thinking'] = thinking_content
+            
         await self.memory_manager.save_conversation_turn(
             session_id=session_id,
             role="assistant",
             content=assistant_response,
-            memory_refs=relevant_memories
+            **metadata
         )
         
         # Update consciousness after response
