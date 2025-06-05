@@ -1,0 +1,292 @@
+# docker-compose.memory.yml - Production Memory System Deployment
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector for Episodic Memory
+  postgres-primary:
+    image: pgvector/pgvector:pg16
+    container_name: aims_postgres_primary
+    environment:
+      POSTGRES_DB: aims_memory
+      POSTGRES_USER: aims
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "-c shared_buffers=2GB -c effective_cache_size=6GB"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./init-sql:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aims -d aims_memory"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # PostgreSQL Replica for Read Scaling
+  postgres-replica:
+    image: pgvector/pgvector:pg16
+    container_name: aims_postgres_replica
+    environment:
+      POSTGRES_USER: aims
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_MASTER_SERVICE: postgres-primary
+      POSTGRES_REPLICATION_MODE: slave
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # Redis Cluster for Working Memory
+  redis-master:
+    image: redis:7-alpine
+    container_name: aims_redis_master
+    command: >
+      redis-server
+      --maxmemory 4gb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass ${REDIS_PASSWORD}
+      --tcp-backlog 511
+      --timeout 0
+      --tcp-keepalive 300
+    volumes:
+      - redis_master_data:/data
+    ports:
+      - "6379:6379"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 5G
+        reservations:
+          memory: 4G
+
+  redis-slave:
+    image: redis:7-alpine
+    container_name: aims_redis_slave
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --masterauth ${REDIS_PASSWORD}
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 4gb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_slave_data:/data
+    depends_on:
+      - redis-master
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 5G
+        reservations:
+          memory: 4G
+
+  # Redis Sentinel for High Availability
+  redis-sentinel:
+    image: redis:7-alpine
+    container_name: aims_redis_sentinel
+    command: >
+      redis-sentinel /etc/redis-sentinel/sentinel.conf
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis-sentinel/sentinel.conf:ro
+    depends_on:
+      - redis-master
+      - redis-slave
+    restart: always
+
+  # ChromaDB for Semantic Memory (Development)
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: aims_chromadb
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+      - ALLOW_RESET=false
+      - IS_PERSISTENT=TRUE
+    volumes:
+      - chromadb_data:/chroma/chroma
+    ports:
+      - "8000:8000"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # Celery Worker for Memory Consolidation
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.memory
+    container_name: aims_celery_worker
+    command: >
+      celery -A memory_consolidation worker
+      --loglevel=info
+      --concurrency=4
+      --queues=extraction,clustering,summarization,semantic,salience,consolidation
+      --max-tasks-per-child=100
+    environment:
+      - POSTGRES_URL=postgresql+asyncpg://aims:${POSTGRES_PASSWORD}@postgres-primary:5432/aims_memory
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-master:6379/0
+      - CHROMA_URL=http://chromadb:8000
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./src:/app/src:ro
+      - model_cache:/app/models
+    depends_on:
+      - postgres-primary
+      - redis-master
+      - chromadb
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 16G
+
+  # Celery Beat for Scheduled Tasks
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.memory
+    container_name: aims_celery_beat
+    command: celery -A memory_consolidation beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-master:6379/0
+    depends_on:
+      - redis-master
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Flower for Celery Monitoring
+  celery-flower:
+    image: mher/flower:latest
+    container_name: aims_celery_flower
+    command: celery flower --broker=redis://:${REDIS_PASSWORD}@redis-master:6379/0
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis-master:6379/0
+      - FLOWER_BASIC_AUTH=${FLOWER_USER}:${FLOWER_PASSWORD}
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis-master
+    restart: always
+
+  # pgAdmin for PostgreSQL Management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: aims_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    restart: always
+
+  # Prometheus for Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aims_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: always
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aims_grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3000:3000"
+    restart: always
+    depends_on:
+      - prometheus
+
+  # Vector Database Backup Service
+  backup-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    container_name: aims_backup_service
+    environment:
+      - POSTGRES_URL=postgresql://aims:${POSTGRES_PASSWORD}@postgres-primary:5432/aims_memory
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-master:6379
+      - S3_BUCKET=${S3_BACKUP_BUCKET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 3 * * *}
+    volumes:
+      - backup_data:/backups
+      - chromadb_data:/chroma/chroma:ro
+    restart: always
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  redis_master_data:
+  redis_slave_data:
+  chromadb_data:
+  pgadmin_data:
+  prometheus_data:
+  grafana_data:
+  backup_data:
+  model_cache:
+
+networks:
+  default:
+    name: aims_memory_network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
