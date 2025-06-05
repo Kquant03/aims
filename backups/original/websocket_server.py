@@ -221,11 +221,9 @@ class ConsciousnessWebSocketServer:
                 
                 # Handle both string and bytes messages
                 if isinstance(message, bytes):
-                    message_str = message.decode('utf-8')
-                else:
-                    message_str = str(message)
-
-                await self.handle_client_message(client_id, message_str)
+                    message = message.decode('utf-8')
+                    
+                await self.handle_client_message(client_id, message)
         
         except websockets.exceptions.ConnectionClosed:
             logger.debug(f"Client {client_id} connection closed normally")

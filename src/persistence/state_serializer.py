@@ -1,233 +1,54 @@
-# state_serializer.py - Efficient state serialization
+# state_serializer.py - Efficient state serialization (Fixed)
 import json
 import pickle
 import gzip
-import base64
-from typing import Any, Dict, Union
+from typing import Any, Dict
 from datetime import datetime
 import numpy as np
-import torch
 import logging
 import msgpack
-import msgpack_numpy as m
-m.patch()  # Enable numpy array serialization
 
 logger = logging.getLogger(__name__)
 
 class StateSerializer:
     """Handles efficient serialization of complex AI states"""
     
-    @staticmethod
-    def serialize_tensor(tensor: torch.Tensor) -> Dict[str, Any]:
-        """Serialize PyTorch tensor"""
-        return {
-            'type': 'torch_tensor',
-            'dtype': str(tensor.dtype),
-            'shape': list(tensor.shape),
-            'device': str(tensor.device),
-            'data': tensor.cpu().numpy().tolist()
-        }
-    
-    @staticmethod
-    def serialize_msgpack(data: Any, compress: bool = True) -> bytes:
-        """Serialize data using MessagePack for better performance"""
-        try:
-            # Use msgpack for efficient binary serialization
-            packed = msgpack.packb(
-                data,
-                use_bin_type=True,
-                strict_types=True,
-                default=m.encode  # Handle numpy arrays
-            )
+    # Fix for serialize_msgpack method in state_serializer.py
+
+@staticmethod
+def serialize_msgpack(data: Any, compress: bool = True) -> bytes:
+    """Serialize data using MessagePack for better performance"""
+    try:
+        def default(obj):
+            if isinstance(obj, np.ndarray):
+                return {"_type": "numpy.ndarray", "dtype": str(obj.dtype),
+                       "shape": obj.shape, "data": obj.tolist()}
+            elif isinstance(obj, (np.integer, np.floating)):
+                return obj.item()
+            elif isinstance(obj, datetime):
+                return {"_type": "datetime", "value": obj.isoformat()}
+            raise TypeError(f"Object of type {type(obj)} is not serializable")
+        
+        # Pack the data
+        packed = msgpack.packb(data, default=default, use_bin_type=True)
+        
+        # Ensure packed is bytes (for type checker)
+        if packed is None:
+            raise ValueError("msgpack.packb returned None")
+        if not isinstance(packed, bytes):
+            # Convert to bytes if somehow it's not
+            packed = bytes(packed) if hasattr(packed, '__bytes__') else str(packed).encode('utf-8')
+        
+        # Now packed is guaranteed to be bytes
+        if compress:
+            compressed = gzip.compress(packed, compresslevel=6)
+            # compressed is guaranteed to be bytes by gzip.compress
+            result = b"msgpack_gz:" + compressed
+        else:
+            result = b"msgpack:" + packed
+        
+        return result
             
-            if compress:
-                packed = gzip.compress(packed, compresslevel=6)
-            
-            # Add format header
-            header = b"msgpack_gz:" if compress else b"msgpack:"
-            return header + packed
-            
-        except Exception as e:
-            logger.error(f"Error serializing with msgpack: {e}")
-            raise
-    
-    @staticmethod
-    def deserialize_msgpack(data: bytes) -> Any:
-        """Deserialize MessagePack data"""
-        try:
-            # Parse format header
-            header_end = data.find(b':')
-            if header_end == -1:
-                raise ValueError("Invalid serialized data format")
-            
-            format_type = data[:header_end].decode('utf-8')
-            payload = data[header_end + 1:]
-            
-            # Decompress if needed
-            if format_type == 'msgpack_gz':
-                payload = gzip.decompress(payload)
-            
-            # Deserialize
-            return msgpack.unpackb(
-                payload,
-                raw=False,
-                strict_map_key=False,
-                object_hook=m.decode  # Handle numpy arrays
-            )
-            
-        except Exception as e:
-            logger.error(f"Error deserializing msgpack: {e}")
-            raise
-    
-    @staticmethod
-    def benchmark_serialization(data: Any, iterations: int = 100) -> Dict[str, float]:
-        """Benchmark different serialization methods"""
-        import time
-        
-        results = {}
-        
-        # Test JSON
-        start = time.time()
-        for _ in range(iterations):
-            json_data = json.dumps(data, default=str).encode('utf-8')
-        results['json'] = (time.time() - start) / iterations
-        results['json_size'] = len(json_data)
-        
-        # Test Pickle
-        start = time.time()
-        for _ in range(iterations):
-            pickle_data = pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
-        results['pickle'] = (time.time() - start) / iterations
-        results['pickle_size'] = len(pickle_data)
-        
-        # Test MessagePack
-        start = time.time()
-        for _ in range(iterations):
-            msgpack_data = msgpack.packb(data, use_bin_type=True)
-        results['msgpack'] = (time.time() - start) / iterations
-        results['msgpack_size'] = len(msgpack_data)
-        
-        # Test with compression
-        start = time.time()
-        for _ in range(iterations):
-            compressed = gzip.compress(msgpack_data, compresslevel=6)
-        results['msgpack_compressed'] = (time.time() - start) / iterations
-        results['msgpack_compressed_size'] = len(compressed)
-        
-        return results
-    
-    @staticmethod
-    def deserialize_tensor(data: Dict[str, Any]) -> torch.Tensor:
-        """Deserialize PyTorch tensor"""
-        numpy_array = np.array(data['data'])
-        tensor = torch.from_numpy(numpy_array)
-        
-        # Convert dtype if needed
-        if 'float' in data['dtype']:
-            tensor = tensor.float()
-        elif 'int' in data['dtype']:
-            tensor = tensor.long()
-        
-        # Move to device if specified and available
-        if 'cuda' in data['device'] and torch.cuda.is_available():
-            tensor = tensor.cuda()
-        
-        return tensor
-    
-    @staticmethod
-    def serialize_state(state: Any, compress: bool = True) -> bytes:
-        """Serialize any state object to bytes"""
-        try:
-            # Try JSON first (most compatible)
-            if hasattr(state, 'to_dict'):
-                state_dict = state.to_dict()
-                json_str = json.dumps(state_dict, default=str)
-                data = json_str.encode('utf-8')
-                format_type = 'json'
-            else:
-                # Fall back to pickle
-                data = pickle.dumps(state, protocol=pickle.HIGHEST_PROTOCOL)
-                format_type = 'pickle'
-            
-            # Compress if requested
-            if compress:
-                data = gzip.compress(data, compresslevel=6)
-                format_type += '_gz'
-            
-            # Add format header
-            header = f"{format_type}:".encode('utf-8')
-            return header + data
-            
-        except Exception as e:
-            logger.error(f"Error serializing state: {e}")
-            raise
-    
-    @staticmethod
-    def deserialize_state(data: bytes) -> Any:
-        """Deserialize state from bytes"""
-        try:
-            # Parse format header
-            header_end = data.find(b':')
-            if header_end == -1:
-                raise ValueError("Invalid serialized data format")
-            
-            format_type = data[:header_end].decode('utf-8')
-            payload = data[header_end + 1:]
-            
-            # Decompress if needed
-            if format_type.endswith('_gz'):
-                payload = gzip.decompress(payload)
-                format_type = format_type[:-3]
-            
-            # Deserialize based on format
-            if format_type == 'json':
-                json_str = payload.decode('utf-8')
-                return json.loads(json_str)
-            elif format_type == 'pickle':
-                return pickle.loads(payload)
-            else:
-                raise ValueError(f"Unknown format type: {format_type}")
-                
-        except Exception as e:
-            logger.error(f"Error deserializing state: {e}")
-            raise
-    
-    @staticmethod
-    def create_state_diff(old_state: Dict, new_state: Dict) -> Dict[str, Any]:
-        """Create a diff between two states for efficient storage"""
-        diff = {
-            'timestamp': datetime.now().isoformat(),
-            'changes': {}
-        }
-        
-        # Find changed keys
-        all_keys = set(old_state.keys()) | set(new_state.keys())
-        
-        for key in all_keys:
-            if key not in old_state:
-                diff['changes'][key] = {'action': 'added', 'value': new_state[key]}
-            elif key not in new_state:
-                diff['changes'][key] = {'action': 'removed'}
-            elif old_state[key] != new_state[key]:
-                diff['changes'][key] = {
-                    'action': 'modified',
-                    'old_value': old_state[key],
-                    'new_value': new_state[key]
-                }
-        
-        return diff
-    
-    @staticmethod
-    def apply_state_diff(base_state: Dict, diff: Dict[str, Any]) -> Dict:
-        """Apply a diff to reconstruct a state"""
-        result_state = base_state.copy()
-        
-        for key, change in diff['changes'].items():
-            if change['action'] == 'added':
-                result_state[key] = change['value']
-            elif change['action'] == 'removed':
-                result_state.pop(key, None)
-            elif change['action'] == 'modified':
-                result_state[key] = change['new_value']
-        
-        return result_state
+    except Exception as e:
+        logger.error(f"Error serializing with msgpack: {e}")
+        raise

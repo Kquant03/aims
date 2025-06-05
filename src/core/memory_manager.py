@@ -1,4 +1,4 @@
-# memory_manager.py - Persistent Memory Management System
+# memory_manager.py - Fixed version with proper imports
 import asyncio
 import json
 import hashlib
@@ -8,11 +8,16 @@ from dataclasses import dataclass, asdict
 import numpy as np
 import logging
 from collections import deque
-import faiss
 import hnswlib
 from typing import Tuple
 import msgpack
 
+# Add missing torch import
+try:
+    import torch
+except ImportError:
+    torch = None
+    
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -51,8 +56,6 @@ class PersistentMemoryManager:
     
     def _init_storage(self):
         """Initialize storage connections"""
-        # In a real implementation, this would connect to Redis, PostgreSQL, and Qdrant
-        # For now, we'll use in-memory storage
         logger.info("Initialized memory storage (in-memory mode)")
     
     async def store_memory(self, content: str, context: Dict[str, Any]) -> str:
@@ -81,7 +84,6 @@ class PersistentMemoryManager:
         
         logger.debug(f"Stored memory {memory_id}: {content[:50]}...")
         return memory_id
-        
     
     async def retrieve_memories(self, query: str, k: int = 5) -> List[MemoryItem]:
         """Retrieve relevant memories based on query"""
@@ -159,12 +161,12 @@ class PersistentMemoryManager:
         logger.info(f"Consolidated memories: removed {len(memories_to_remove)} low-salience memories")
 
 class AdvancedMemoryManager(PersistentMemoryManager):
-    """Enhanced memory manager with HNSW indexing and GPU acceleration"""
+    """Enhanced memory manager with HNSW indexing"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.embedding_dim = config.get('embedding_dim', 768)
-        self.use_gpu = torch.cuda.is_available() and config.get('use_gpu', True)
+        self.use_gpu = torch.cuda.is_available() if torch else False
         
         # Initialize HNSW index
         self.hnsw_index = hnswlib.Index(space='cosine', dim=self.embedding_dim)
@@ -175,174 +177,6 @@ class AdvancedMemoryManager(PersistentMemoryManager):
         )
         self.hnsw_index.set_ef(100)  # Query time parameter
         
-        # Initialize FAISS GPU index if available
-        if self.use_gpu:
-            self._init_faiss_gpu()
-        
         # Memory consolidation parameters
         self.consolidation_threshold = config.get('consolidation_threshold', 0.3)
         self.importance_decay_rate = config.get('importance_decay_rate', 0.01)
-        
-    def _init_faiss_gpu(self):
-        """Initialize FAISS GPU index"""
-        try:
-            import faiss
-            
-            # Create GPU resources
-            self.gpu_res = faiss.StandardGpuResources()
-            
-            # Create GPU index
-            self.gpu_index = faiss.GpuIndexFlatL2(
-                self.gpu_res,
-                self.embedding_dim
-            )
-            
-            logger.info("FAISS GPU index initialized")
-        except Exception as e:
-            logger.warning(f"Failed to initialize FAISS GPU: {e}")
-            self.use_gpu = False
-    
-    async def store_memory_with_embedding(self, 
-                                        content: str, 
-                                        embedding: np.ndarray,
-                                        context: Dict[str, Any]) -> str:
-        """Store memory with pre-computed embedding"""
-        memory_id = await self.store_memory(content, context)
-        
-        # Add to HNSW index
-        self.hnsw_index.add_items(
-            embedding.reshape(1, -1),
-            [hash(memory_id) % 2**32]  # Convert to uint32
-        )
-        
-        # Add to GPU index if available
-        if self.use_gpu and hasattr(self, 'gpu_index'):
-            self.gpu_index.add(embedding.reshape(1, -1))
-        
-        return memory_id
-    
-    async def retrieve_memories_by_embedding(self, 
-                                           query_embedding: np.ndarray,
-                                           k: int = 10) -> List[Tuple[MemoryItem, float]]:
-        """Retrieve memories using embedding similarity"""
-        # Search in HNSW index
-        labels, distances = self.hnsw_index.knn_query(
-            query_embedding.reshape(1, -1),
-            k=k
-        )
-        
-        # Retrieve actual memories
-        memories_with_scores = []
-        for label, distance in zip(labels[0], distances[0]):
-            # Convert distance to similarity score
-            similarity = 1 - distance
-            
-            # Find memory by hash (simplified - in production use proper mapping)
-            for memory_id, memory in self.memories.items():
-                if hash(memory_id) % 2**32 == label:
-                    memories_with_scores.append((memory, similarity))
-                    break
-        
-        return memories_with_scores
-    
-    async def consolidate_memories_advanced(self):
-        """Advanced memory consolidation with importance weighting"""
-        current_time = datetime.now()
-        
-        # Group memories by semantic similarity
-        memory_clusters = await self._cluster_memories()
-        
-        # Consolidate each cluster
-        for cluster_id, cluster_memories in memory_clusters.items():
-            # Calculate cluster importance
-            cluster_importance = np.mean([
-                m.calculate_salience(current_time) for m in cluster_memories
-            ])
-            
-            if cluster_importance < self.consolidation_threshold:
-                # Create summary memory
-                summary_content = self._summarize_cluster(cluster_memories)
-                
-                # Store summary with high importance
-                await self.store_memory(
-                    content=summary_content,
-                    context={
-                        'type': 'consolidated',
-                        'source_memories': [m.id for m in cluster_memories],
-                        'importance': min(1.0, cluster_importance * 1.5)
-                    }
-                )
-                
-                # Remove original memories
-                for memory in cluster_memories:
-                    del self.memories[memory.id]
-        
-        logger.info(f"Consolidated {len(memory_clusters)} memory clusters")
-    
-    async def _cluster_memories(self) -> Dict[int, List[MemoryItem]]:
-        """Cluster memories by semantic similarity"""
-        # Simplified clustering - in production use proper clustering algorithms
-        clusters = {}
-        cluster_id = 0
-        
-        processed = set()
-        
-        for memory_id, memory in self.memories.items():
-            if memory_id in processed:
-                continue
-            
-            # Create new cluster
-            cluster = [memory]
-            processed.add(memory_id)
-            
-            # Find similar memories
-            for other_id, other_memory in self.memories.items():
-                if other_id in processed:
-                    continue
-                
-                # Simple similarity check
-                if self._calculate_similarity(memory, other_memory) > 0.8:
-                    cluster.append(other_memory)
-                    processed.add(other_id)
-            
-            if len(cluster) > 1:
-                clusters[cluster_id] = cluster
-                cluster_id += 1
-        
-        return clusters
-    
-    def _calculate_similarity(self, mem1: MemoryItem, mem2: MemoryItem) -> float:
-        """Calculate similarity between two memories"""
-        # Simplified - in production use proper embeddings
-        words1 = set(mem1.content.lower().split())
-        words2 = set(mem2.content.lower().split())
-        
-        if not words1 or not words2:
-            return 0.0
-        
-        intersection = words1 & words2
-        union = words1 | words2
-        
-        return len(intersection) / len(union)
-    
-    def _summarize_cluster(self, memories: List[MemoryItem]) -> str:
-        """Create summary of memory cluster"""
-        # Simplified summarization
-        contents = [m.content for m in memories]
-        
-        # Find common themes
-        all_words = []
-        for content in contents:
-            all_words.extend(content.lower().split())
-        
-        word_freq = {}
-        for word in all_words:
-            word_freq[word] = word_freq.get(word, 0) + 1
-        
-        # Get top words
-        top_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:10]
-        
-        summary = f"Consolidated memory of {len(memories)} related experiences involving: "
-        summary += ", ".join([word for word, _ in top_words[:5]])
-        
-        return summary

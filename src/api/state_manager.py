@@ -1,4 +1,4 @@
-# state_manager.py - State Persistence and Backup Management
+# state_manager.py - State Persistence and Backup Management (Fixed)
 import os
 import json
 import pickle
@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 import logging
 import asyncio
-import aioboto3  # For S3 backup support
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,6 @@ class StateManager:
         self.config = config
         self.base_path = Path(config.get('state_path', 'data/states'))
         self.backup_path = Path(config.get('backup_path', 'data/backups'))
-        self.s3_config = config.get('s3_backup', {})
         
         # Create directories
         self.base_path.mkdir(parents=True, exist_ok=True)
@@ -35,6 +33,9 @@ class StateManager:
         """Save complete system state"""
         timestamp = datetime.now()
         state_id = timestamp.strftime('%Y%m%d_%H%M%S')
+        
+        # Import ConsciousnessState here to avoid circular imports
+        from src.core.consciousness import ConsciousnessState
         
         # Gather all state components
         complete_state = {
@@ -100,6 +101,9 @@ class StateManager:
     async def load_complete_state(self, state_id: str, claude_interface) -> bool:
         """Load a complete system state"""
         try:
+            # Import ConsciousnessState here to avoid circular imports
+            from src.core.consciousness import ConsciousnessState
+            
             # Find state file
             state_file = self._find_state_file(state_id)
             if not state_file:
@@ -184,10 +188,6 @@ class StateManager:
             
             logger.info(f"Created backup: {backup_name}")
             
-            # Upload to S3 if configured
-            if self.s3_config.get('enabled'):
-                await self._upload_to_s3(backup_file, backup_name)
-            
             # Clean old backups
             await self._cleanup_old_backups()
             
@@ -198,28 +198,6 @@ class StateManager:
             if backup_file.exists():
                 backup_file.unlink()
             raise
-    
-    async def _upload_to_s3(self, backup_file: Path, backup_name: str):
-        """Upload backup to S3"""
-        try:
-            session = aioboto3.Session()
-            async with session.client(
-                's3',
-                aws_access_key_id=self.s3_config['access_key'],
-                aws_secret_access_key=self.s3_config['secret_key'],
-                region_name=self.s3_config.get('region', 'us-east-1')
-            ) as s3:
-                with open(backup_file, 'rb') as f:
-                    await s3.upload_fileobj(
-                        f, 
-                        self.s3_config['bucket'], 
-                        f"aims-backups/{backup_name}"
-                    )
-            
-            logger.info(f"Uploaded backup to S3: {backup_name}")
-            
-        except Exception as e:
-            logger.error(f"Error uploading to S3: {e}")
     
     async def _cleanup_old_backups(self):
         """Remove old local backups"""
@@ -263,9 +241,6 @@ class StateManager:
             if user_id in state_file.stem:
                 with open(state_file, 'r') as f:
                     export_data['states'].append(json.load(f))
-        
-        # Export would also include memories from the database
-        # This is a placeholder for the full implementation
         
         # Save export
         with gzip.open(output_path, 'wt') as f:

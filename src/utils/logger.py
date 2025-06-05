@@ -22,9 +22,14 @@ class JSONFormatter(logging.Formatter):
             'line': record.lineno
         }
         
-        # Add extra fields
-        if hasattr(record, 'extra'):
-            log_data.update(record.extra)
+        # Add extra fields if they exist
+        for key, value in record.__dict__.items():
+            if key not in ['name', 'msg', 'args', 'created', 'filename', 
+                          'funcName', 'levelname', 'levelno', 'lineno', 
+                          'module', 'msecs', 'message', 'pathname', 'process',
+                          'processName', 'relativeCreated', 'stack_info',
+                          'thread', 'threadName', 'exc_info', 'exc_text']:
+                log_data[key] = value
         
         # Add exception info if present
         if record.exc_info:
@@ -62,25 +67,3 @@ def setup_logging(log_level: str = 'INFO', log_file: str = 'logs/aims.log'):
     logger.addHandler(file_handler)
     
     return logger
-
-# Performance logging decorator
-def log_performance(logger: logging.Logger):
-    """Decorator to log function performance"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            start_time = datetime.now()
-            result = func(*args, **kwargs)
-            duration = (datetime.now() - start_time).total_seconds()
-            
-            logger.info(
-                f"{func.__name__} completed",
-                extra={
-                    'function': func.__name__,
-                    'duration_seconds': duration,
-                    'performance': True
-                }
-            )
-            
-            return result
-        return wrapper
-    return decorator

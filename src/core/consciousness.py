@@ -4,19 +4,19 @@ import numpy as np
 import torch
 import torch.nn as nn
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, asdict
 import json
 from collections import deque
 import logging
+
+# Try to import Flash Attention, but make it optional
 try:
     from flash_attn import flash_attn_func, flash_attn_qkvpacked_func
     FLASH_ATTENTION_AVAILABLE = True
 except ImportError:
     FLASH_ATTENTION_AVAILABLE = False
-    print("WARNING: Flash Attention not available, using standard attention")
-
-from src.utils.gpu_optimizer import gpu_optimizer
+    logging.warning("Flash Attention not available, using standard attention")
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,12 @@ class ConsciousnessAttentionMechanism(nn.Module):
         self.head_dim = hidden_dim // num_heads
         
         # Ensure head dimension is compatible with Flash Attention
-        assert self.head_dim in [32, 64, 128], f"Head dim {self.head_dim} not optimal for Flash Attention"
+        if self.head_dim not in [32, 64, 128]:
+            # Adjust to nearest valid dimension
+            valid_dims = [32, 64, 128]
+            self.head_dim = min(valid_dims, key=lambda x: abs(x - self.head_dim))
+            self.hidden_dim = self.head_dim * num_heads
+            logger.info(f"Adjusted hidden_dim to {self.hidden_dim} for Flash Attention compatibility")
         
         self.qkv_proj = nn.Linear(input_dim, hidden_dim * 3)
         self.output_proj = nn.Linear(hidden_dim, input_dim)
@@ -105,32 +110,6 @@ class ConsciousnessAttentionMechanism(nn.Module):
             output = output.reshape(batch_size, seq_len, self.hidden_dim)
         
         return self.output_proj(output)
-
-# Add coherence calculation method to ConsciousnessCore:
-def calculate_phi_approximation(self) -> float:
-    """Calculate approximation of Integrated Information (Phi)"""
-    if not self.memory_buffer:
-        return 1.0
-    
-    # Convert memories to embeddings (simplified)
-    memories = list(self.memory_buffer)
-    n = len(memories)
-    
-    # Calculate pairwise mutual information (simplified)
-    total_integration = 0.0
-    
-    for i in range(n):
-        for j in range(i + 1, n):
-            # Simplified mutual information based on string similarity
-            similarity = len(set(memories[i].split()) & set(memories[j].split()))
-            similarity /= max(len(memories[i].split()), len(memories[j].split()))
-            total_integration += similarity
-    
-    # Normalize
-    max_possible = (n * (n - 1)) / 2
-    phi = total_integration / max_possible if max_possible > 0 else 1.0
-    
-    return min(1.0, phi)
 
 class ConsciousnessCore:
     """Main consciousness system coordinating all components"""
@@ -242,9 +221,36 @@ class ConsciousnessCore:
         # Simplified coherence based on memory consistency and emotional stability
         memory_coherence = min(1.0, len(self.state.working_memory) / 5.0)
         
-        emotional_stability = 1.0 - np.std(list(self.state.emotional_state.values()))
+        emotional_values = list(self.state.emotional_state.values())
+        emotional_stability = 1.0 - float(np.std(emotional_values))
         
-        self.state.global_coherence = 0.7 * memory_coherence + 0.3 * emotional_stability
+        # Ensure coherence is a regular float
+        self.state.global_coherence = float(0.7 * memory_coherence + 0.3 * emotional_stability)
+    
+    def calculate_phi_approximation(self) -> float:
+        """Calculate approximation of Integrated Information (Phi)"""
+        if not self.memory_buffer:
+            return 1.0
+        
+        # Convert memories to embeddings (simplified)
+        memories = list(self.memory_buffer)
+        n = len(memories)
+        
+        # Calculate pairwise mutual information (simplified)
+        total_integration = 0.0
+        
+        for i in range(n):
+            for j in range(i + 1, n):
+                # Simplified mutual information based on string similarity
+                similarity = len(set(memories[i].split()) & set(memories[j].split()))
+                similarity /= max(len(memories[i].split()), len(memories[j].split()))
+                total_integration += similarity
+        
+        # Normalize
+        max_possible = (n * (n - 1)) / 2
+        phi = total_integration / max_possible if max_possible > 0 else 1.0
+        
+        return min(1.0, phi)
     
     async def _persist_state(self):
         """Persist current state to storage"""

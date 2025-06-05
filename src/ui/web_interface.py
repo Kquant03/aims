@@ -285,7 +285,6 @@ class AIMSWebInterface:
 
 if __name__ == '__main__':
     # Save the template
-    save_template()
     
     # Run the application
     app = AIMSWebInterface()
