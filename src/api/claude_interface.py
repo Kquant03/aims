@@ -1,4 +1,4 @@
-# Fixed claude_interface.py - Properly wired consciousness system with correct streaming
+# claude_interface.py - Fixed with all components properly wired
 import asyncio
 import json
 import os
@@ -10,12 +10,12 @@ import hashlib
 import logging
 from dataclasses import dataclass
 import numpy as np
-from src.core.attention_agent import AttentionAgent
 
 from src.core.consciousness import ConsciousnessCore, ConsciousnessState
 from src.core.memory_manager import PersistentMemoryManager
 from src.core.personality import PersonalityEngine
 from src.core.emotional_engine import EmotionalEngine
+from src.core.attention_agent import AttentionAgent
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,14 @@ class ClaudeConsciousnessInterface:
         self.personality = PersonalityEngine()
         self.emotions = EmotionalEngine()
         
+        # Initialize attention agent with Claude client
+        self.attention_agent = AttentionAgent(self.client)
+        
         # State management
         self.active_sessions = {}
         self.system_prompt_template = self._load_system_prompt()
         
-        # NEW: State update callback for WebSocket
+        # State update callback for WebSocket
         self.state_update_callback = None
         
     def set_state_update_callback(self, callback):
@@ -322,46 +325,36 @@ Respond naturally while letting these states influence but not dominate your res
         # Calculate temperature based on emotional state and personality
         temperature = self._calculate_temperature(response_style)
         
-        # Configure extended thinking if requested
-        thinking_config = {}
-        if extended_thinking:
-            thinking_config = {
-                'thinking': {
-                    'enabled': True,
-                    'budget': 2048  # Tokens for thinking
-                }
-            }
-        
         # Stream response from Claude
         response_text = ""
         thinking_content = ""
         
-        # Using messages.stream() context manager (recommended approach)
-        async with self.client.messages.stream(
-            model=self.config.get('api', {}).get('claude', {}).get('model', 'claude-3-sonnet-20240229'),
-            messages=messages,
-            system=system_prompt,
-            max_tokens=self.config.get('api', {}).get('claude', {}).get('max_tokens', 4096),
-            temperature=temperature,
-            **thinking_config  # Add thinking configuration if enabled
-        ) as stream:
-            # Process the stream
+        try:
+            # Create message with streaming
+            stream = await self.client.messages.create(
+                model=self.config.get('api', {}).get('claude', {}).get('model', 'claude-3-sonnet-20240229'),
+                messages=messages,
+                system=system_prompt,
+                max_tokens=self.config.get('api', {}).get('claude', {}).get('max_tokens', 4096),
+                temperature=temperature,
+                stream=True
+            )
+            
             async for event in stream:
                 if hasattr(event, 'type'):
-                    # Handle thinking events if extended thinking is enabled
-                    if event.type == 'thinking_delta' and hasattr(event, 'delta'):
-                        thinking_content += event.delta.text
-                    # Handle regular content
-                    elif event.type == 'content_block_delta' and hasattr(event, 'delta'):
-                        if hasattr(event.delta, 'text'):
-                            text = event.delta.text
-                            response_text += text
-                            
-                            # Apply real-time emotional modulation if high intensity
-                            if self.emotions.get_emotional_intensity() > 0.7:
-                                text = self._apply_emotional_modulation(text)
-                            
-                            yield text
+                    if event.type == 'content_block_delta':
+                        text = event.delta.text
+                        response_text += text
+                        
+                        # Apply real-time emotional modulation if high intensity
+                        if self.emotions.get_emotional_intensity() > 0.7:
+                            text = self._apply_emotional_modulation(text)
+                        
+                        yield text
+                        
+        except Exception as e:
+            logger.error(f"Error streaming response: {e}")
+            yield f"I apologize, I encountered an error: {str(e)}"
         
         # Store the complete response and update consciousness
         await self._post_process_response(
@@ -370,11 +363,47 @@ Respond naturally while letting these states influence but not dominate your res
             assistant_response=response_text,
             relevant_memories=[m.id for m in relevant_memories],
             attention_focus=attention_focus,
-            thinking_content=thinking_content if extended_thinking else None
+            thinking_content=thinking_content if thinking_content else None
         )
+    
+    def _apply_emotional_modulation(self, text: str) -> str:
+        """Apply emotional modulation to text based on current emotional state"""
+        # This is a simple implementation - could be enhanced with more sophisticated NLP
+        emotion_label, confidence = self.emotions.get_closest_emotion_label()
         
-        # Return attention focus and thinking in the response metadata
-        # This will be handled by the web interface
+        if confidence < 0.5:  # Not confident enough to modulate
+            return text
+        
+        # Apply subtle modifications based on emotion
+        if emotion_label == 'joy' and self.emotions.current_state.arousal > 0.7:
+            # Add enthusiasm markers occasionally
+            if np.random.random() < 0.1:
+                text = text.replace('.', '!')
+        elif emotion_label == 'sadness':
+            # Slower, more measured pace
+            text = text.replace('!', '.')
+        elif emotion_label == 'curiosity':
+            # More questioning tone
+            if text.endswith('.') and np.random.random() < 0.2:
+                text = text[:-1] + '?'
+        
+        return text
+    
+    def _calculate_temperature(self, response_style: Dict[str, Any]) -> float:
+        """Calculate temperature based on personality and emotional state"""
+        base_temp = self.config.get('api', {}).get('claude', {}).get('temperature_base', 0.7)
+        
+        # Adjust based on personality
+        openness_modifier = (self.personality.profile.openness - 0.5) * 0.3
+        
+        # Adjust based on emotional arousal
+        arousal_modifier = (self.emotions.current_state.arousal - 0.5) * 0.2
+        
+        # Calculate final temperature
+        temperature = base_temp + openness_modifier + arousal_modifier
+        
+        # Clamp to valid range
+        return max(0.0, min(1.0, temperature))
     
     def _build_system_prompt_with_attention(self, context: ConversationContext, attention_focus: str) -> str:
         """Build system prompt including the attention focus"""

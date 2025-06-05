@@ -1,4 +1,4 @@
-# memory_manager.py - Fixed version with proper imports
+# memory_manager.py - Fixed version with enhanced conversation storage
 import asyncio
 import json
 import hashlib
@@ -109,19 +109,23 @@ class PersistentMemoryManager:
         return [memory for _, memory in memory_scores[:k]]
     
     async def save_conversation_turn(self, session_id: str, role: str, 
-                                   content: str, memory_refs: Optional[List[str]] = None):
-        """Save a conversation turn"""
+                                   content: str, **metadata):
+        """Save a conversation turn with flexible metadata"""
         if session_id not in self.conversation_history:
             self.conversation_history[session_id] = []
         
         turn = {
             'timestamp': datetime.now().isoformat(),
             'role': role,
-            'content': content,
-            'memory_refs': memory_refs or []
+            'content': content
         }
         
+        # Add any additional metadata
+        turn.update(metadata)
+        
         self.conversation_history[session_id].append(turn)
+        
+        logger.debug(f"Saved {role} turn for session {session_id}")
     
     async def get_conversation_history(self, session_id: str, limit: int = 10) -> List[Dict]:
         """Get recent conversation history"""

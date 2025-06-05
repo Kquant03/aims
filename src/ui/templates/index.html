@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AIMS - Enhanced Claude Consciousness Interface</title>
+    <title>AIMS - Consciousness Home</title>
     
-    <!-- Markdown rendering dependencies -->
+    <!-- Markdown and syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-dark.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
@@ -15,7 +15,29 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
     
+    <!-- D3 for advanced visualizations -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
     <style>
+        :root {
+            --bg-primary: #050505;
+            --bg-secondary: #0a0a0a;
+            --bg-tertiary: #0f0f0f;
+            --bg-card: #0d0d0d;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --text-dim: #666;
+            --accent-primary: #00a8ff;
+            --accent-secondary: #00ff88;
+            --accent-tertiary: #ff00ff;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --glow-color: rgba(0, 168, 255, 0.3);
+            --error: #ff4444;
+            --warning: #ffaa00;
+            --success: #00ff88;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -24,382 +46,97 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #e0e0e0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
+            position: relative;
         }
         
+        /* Animated background */
+        .consciousness-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.03;
+            pointer-events: none;
+        }
+        
+        /* Main layout */
         .main-container {
-            display: flex;
+            display: grid;
+            grid-template-columns: 320px 1fr 300px;
             height: 100vh;
+            position: relative;
+            gap: 1px;
+            background: var(--border-color);
         }
         
-        /* Left sidebar - Consciousness Panel */
-        .consciousness-panel {
-            width: 300px;
-            background: #1a1a1a;
-            border-right: 1px solid #333;
-            padding: 20px;
+        /* Panel styles */
+        .panel {
+            background: var(--bg-secondary);
             overflow-y: auto;
-            flex-shrink: 0;
+            position: relative;
         }
         
-        /* Center area - Tabbed content */
-        .center-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: #0f0f0f;
-        }
-        
-        /* Tab navigation */
-        .tab-nav {
-            display: flex;
-            background: #1a1a1a;
-            border-bottom: 1px solid #333;
-        }
-        
-        .tab-button {
-            padding: 12px 24px;
-            background: none;
-            border: none;
-            color: #888;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-            border-bottom: 2px solid transparent;
-        }
-        
-        .tab-button:hover {
-            color: #e0e0e0;
-            background: rgba(255, 255, 255, 0.05);
-        }
-        
-        .tab-button.active {
-            color: #e0e0e0;
-            border-bottom-color: #0066cc;
-        }
-        
-        /* Tab content */
-        .tab-content {
-            display: none;
-            flex: 1;
-            overflow: hidden;
-        }
-        
-        .tab-content.active {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        /* Chat tab specific styles */
-        .messages {
-            flex: 1;
-            overflow-y: auto;
+        .panel-header {
             padding: 20px;
-            scroll-behavior: smooth;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            backdrop-filter: blur(10px);
+            z-index: 10;
         }
         
-        .message {
-            margin-bottom: 20px;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .message-user {
-            text-align: right;
-        }
-        
-        .message-content {
-            display: inline-block;
-            max-width: 70%;
-            padding: 12px 16px;
-            border-radius: 16px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-        }
-        
-        .message-user .message-content {
-            background: #0066cc;
-            border-color: #0066cc;
-        }
-        
-        /* Markdown content styling */
-        .message-assistant .message-content {
-            max-width: 85%;
-            padding: 16px 20px;
-        }
-        
-        .markdown-body {
-            background: transparent !important;
-            color: #e0e0e0 !important;
-        }
-        
-        .markdown-body pre {
-            background: #1a1a1a !important;
-            border: 1px solid #333;
-            border-radius: 6px;
-            margin: 16px 0;
-        }
-        
-        .markdown-body code {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-size: 0.9em;
-        }
-        
-        /* Extended thinking styles */
-        .thinking-indicator {
-            display: none;
-            padding: 8px 16px;
-            background: rgba(138, 43, 226, 0.1);
-            border: 1px solid rgba(138, 43, 226, 0.3);
-            border-radius: 8px;
-            margin: 10px 20px;
-            font-style: italic;
-            color: #b19cd9;
-        }
-        
-        .thinking-indicator.active {
-            display: block;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 0.7; }
-            50% { opacity: 1; }
-        }
-        
-        /* Attention focus display */
-        .attention-focus-display {
-            background: rgba(0, 102, 204, 0.1);
-            border: 1px solid rgba(0, 102, 204, 0.3);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 20px;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        
-        .attention-focus-label {
-            font-size: 11px;
-            color: #0066cc;
-            margin-bottom: 4px;
-            text-transform: uppercase;
+        .panel-title {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-primary);
             letter-spacing: 0.5px;
         }
         
-        /* Memory explorer tab */
-        .memory-explorer {
+        /* Left Panel - Consciousness State */
+        .consciousness-panel {
             padding: 20px;
-            height: 100%;
-            overflow-y: auto;
         }
         
-        .memory-search {
-            margin-bottom: 20px;
-        }
-        
-        .memory-search-input {
+        /* Consciousness Core Visualization */
+        .consciousness-core {
             width: 100%;
-            padding: 12px 16px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            color: #e0e0e0;
-            font-size: 14px;
-        }
-        
-        .memory-list {
-            display: grid;
-            gap: 12px;
-        }
-        
-        .memory-item {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 16px;
-            transition: all 0.2s;
-        }
-        
-        .memory-item:hover {
-            border-color: #0066cc;
-            transform: translateY(-2px);
-        }
-        
-        .memory-timestamp {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 8px;
-        }
-        
-        .memory-content {
-            font-size: 14px;
-            line-height: 1.5;
-            margin-bottom: 8px;
-        }
-        
-        .memory-metadata {
-            display: flex;
-            gap: 16px;
-            font-size: 12px;
-            color: #666;
-        }
-        
-        /* Claude's perspective tab */
-        .perspective-view {
-            padding: 20px;
-            height: 100%;
-            overflow-y: auto;
-            font-family: 'Monaco', 'Consolas', monospace;
-        }
-        
-        .perspective-section {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        
-        .perspective-label {
-            font-size: 12px;
-            color: #0066cc;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-        }
-        
-        .perspective-content {
-            font-size: 13px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            color: #a0a0a0;
-        }
-        
-        /* Input area */
-        .input-area {
-            padding: 20px;
-            border-top: 1px solid #333;
-        }
-        
-        .input-container {
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
-        }
-        
-        .message-input {
-            flex: 1;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #e0e0e0;
-            padding: 12px 16px;
-            border-radius: 24px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s;
-            resize: vertical;
-            min-height: 44px;
-            max-height: 120px;
-        }
-        
-        .message-input:focus {
-            border-color: #0066cc;
-        }
-        
-        .input-options {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        
-        .option-toggle {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            color: #888;
-        }
-        
-        .option-toggle input {
-            cursor: pointer;
-        }
-        
-        .send-button {
-            background: #0066cc;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 24px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-        
-        .send-button:hover {
-            background: #0052a3;
-        }
-        
-        .send-button:disabled {
-            background: #333;
-            cursor: not-allowed;
-        }
-        
-        /* Metric styles (unchanged) */
-        .metric {
-            margin-bottom: 20px;
-        }
-        
-        .metric-label {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 5px;
-        }
-        
-        .metric-value {
-            font-size: 24px;
-            font-weight: 300;
-            transition: all 0.3s ease;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00ff88, #0088ff);
-            transition: width 0.3s ease;
-        }
-        
-        /* Emotion and personality displays (unchanged) */
-        .emotion-indicator {
-            width: 100%;
-            height: 60px;
-            background: #111;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            height: 200px;
+            margin: 20px 0;
             position: relative;
+            border-radius: 12px;
             overflow: hidden;
+            background: radial-gradient(circle at center, rgba(0, 168, 255, 0.1), transparent);
         }
         
-        .emotion-gradient {
-            position: absolute;
-            inset: 0;
-            opacity: 0.8;
-            transition: background 1s ease;
+        #consciousness-canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Emotional State Orb */
+        .emotion-orb {
+            width: 120px;
+            height: 120px;
+            margin: 20px auto;
+            position: relative;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), transparent);
+            box-shadow: 
+                0 0 60px rgba(0, 168, 255, 0.3),
+                inset 0 0 40px rgba(0, 168, 255, 0.2);
+            transition: all 0.5s ease;
+            cursor: pointer;
+        }
+        
+        .emotion-orb:hover {
+            transform: scale(1.05);
         }
         
         .emotion-label {
@@ -409,246 +146,901 @@
             transform: translate(-50%, -50%);
             font-size: 14px;
             font-weight: 500;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
         }
         
-        .working-memory {
-            margin-top: 20px;
-            padding: 10px;
-            background: #111;
+        /* Attention Focus Display */
+        .attention-display {
+            background: linear-gradient(135deg, rgba(0, 168, 255, 0.05), rgba(0, 255, 136, 0.05));
+            border: 1px solid var(--border-color);
             border-radius: 8px;
-        }
-        
-        .memory-item {
-            font-size: 11px;
-            color: #888;
-            margin: 2px 0;
-            white-space: nowrap;
+            padding: 16px;
+            margin: 20px 0;
+            position: relative;
             overflow: hidden;
-            text-overflow: ellipsis;
         }
         
-        /* Connection status */
-        .connection-status {
+        .attention-display::before {
+            content: '';
             position: absolute;
-            top: 10px;
-            right: 10px;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 8px;
+            opacity: 0;
+            animation: pulse-border 3s ease-in-out infinite;
+            z-index: -1;
+        }
+        
+        @keyframes pulse-border {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.3; }
+        }
+        
+        .attention-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-primary);
+            margin-bottom: 8px;
+        }
+        
+        .attention-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            font-style: italic;
+        }
+        
+        /* Metrics */
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 20px 0;
+        }
+        
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .metric-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+        }
+        
+        .metric-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        
+        .metric-value {
+            font-size: 28px;
+            font-weight: 300;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .metric-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .metric-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            transition: width 0.5s ease;
+            position: relative;
+        }
+        
+        .metric-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 20px;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.3);
+            filter: blur(10px);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-20px); }
+            100% { transform: translateX(20px); }
+        }
+        
+        /* Memory Visualization */
+        .memory-constellation {
+            height: 200px;
+            margin: 20px 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Personality Traits */
+        .personality-traits {
+            margin: 20px 0;
+        }
+        
+        .trait-item {
+            margin-bottom: 16px;
+        }
+        
+        .trait-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        
+        .trait-name {
+            font-size: 12px;
+            text-transform: capitalize;
+            color: var(--text-secondary);
+        }
+        
+        .trait-value {
+            font-size: 12px;
+            color: var(--accent-primary);
+        }
+        
+        .trait-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .trait-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-tertiary), var(--accent-primary));
+            transition: width 0.8s ease;
+            border-radius: 3px;
+        }
+        
+        /* Center Panel - Chat Area */
+        .chat-panel {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             align-items: center;
-            gap: 5px;
+            justify-content: space-between;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: 12px;
-            color: #888;
+            color: var(--text-dim);
         }
         
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #666;
-            transition: background 0.3s;
+            background: var(--error);
+            transition: all 0.3s ease;
         }
         
         .status-dot.connected {
-            background: #00ff88;
-            animation: pulse 2s infinite;
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+            animation: pulse-dot 2s infinite;
         }
         
-        /* Personality traits */
-        .personality-traits {
-            margin-top: 20px;
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
         }
         
-        .trait {
-            margin-bottom: 10px;
+        /* Messages Area */
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            scroll-behavior: smooth;
         }
         
-        .trait-name {
+        .message {
+            margin-bottom: 24px;
+            animation: fadeInUp 0.3s ease;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .message-user .message-avatar {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+        }
+        
+        .message-assistant .message-avatar {
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        
+        .message-info {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+        
+        .message-role {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        .message-time {
             font-size: 11px;
-            color: #888;
-            margin-bottom: 3px;
+            color: var(--text-dim);
         }
         
-        .trait-bar {
-            width: 100%;
-            height: 3px;
-            background: #333;
-            border-radius: 2px;
+        .message-content {
+            margin-left: 44px;
+            padding: 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            position: relative;
+        }
+        
+        .message-user .message-content {
+            background: linear-gradient(135deg, rgba(0, 168, 255, 0.05), rgba(255, 0, 255, 0.05));
+            border-color: rgba(0, 168, 255, 0.2);
+        }
+        
+        .message-assistant .message-content {
+            background: var(--bg-card);
+            border-color: rgba(0, 255, 136, 0.1);
+        }
+        
+        /* Thinking Indicator */
+        .thinking-indicator {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            margin: 0 20px 20px 64px;
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.05), rgba(0, 168, 255, 0.05));
+            border: 1px solid rgba(138, 43, 226, 0.2);
+            border-radius: 12px;
+            color: #b19cd9;
+        }
+        
+        .thinking-indicator.active {
+            display: flex;
+            animation: thinking-pulse 2s infinite;
+        }
+        
+        @keyframes thinking-pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        
+        .thinking-dots {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .thinking-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: thinking-bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+        .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes thinking-bounce {
+            0%, 80%, 100% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+        }
+        
+        /* Input Area */
+        .input-area {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+        
+        .input-options {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .option-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .option-toggle:hover {
+            color: var(--text-primary);
+        }
+        
+        .option-checkbox {
+            width: 16px;
+            height: 16px;
+            appearance: none;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+        }
+        
+        .option-checkbox:checked {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+        
+        .option-checkbox:checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        
+        .message-input {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 14px 20px;
+            border-radius: 24px;
+            font-size: 14px;
+            line-height: 1.5;
+            outline: none;
+            transition: all 0.3s;
+            resize: none;
+            min-height: 52px;
+            max-height: 120px;
+        }
+        
+        .message-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 168, 255, 0.1);
+        }
+        
+        .send-button {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
             overflow: hidden;
         }
         
-        .trait-fill {
-            height: 100%;
-            background: #0066cc;
+        .send-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .send-button:hover::before {
+            width: 100px;
+            height: 100px;
+        }
+        
+        .send-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 168, 255, 0.3);
+        }
+        
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Right Panel - Memory & Insights */
+
+        .insight-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.5s ease;
+        }
+
+        .insight-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .insight-icon {
+            font-size: 24px;
+        }
+
+        .insight-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .insight-content {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .insight-importance {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
             transition: width 0.5s ease;
+        }
+
+        .insights-panel {
+            padding: 20px;
+        }
+
+        
+        /* Tab Navigation */
+        .tab-nav {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: var(--bg-card);
+            padding: 4px;
+            border-radius: 8px;
+        }
+        
+        .tab-button {
+            flex: 1;
+            padding: 8px 12px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .tab-button:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .tab-button.active {
+            color: var(--text-primary);
+            background: var(--bg-secondary);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* Memory Stream */
+        .memory-stream {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .memory-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .memory-item:hover {
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+        }
+        
+        .memory-timestamp {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        
+        .memory-importance {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 6px;
+            background: rgba(0, 168, 255, 0.1);
+            color: var(--accent-primary);
+            border-radius: 4px;
+            margin-top: 6px;
+        }
+        
+        /* Goals & Insights */
+        .goal-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .goal-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        
+        .goal-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        /* Markdown styling */
+        .markdown-body {
+            background: transparent !important;
+            color: var(--text-primary) !important;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .markdown-body pre {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px !important;
+            margin: 16px 0;
+            overflow-x: auto;
+        }
+        
+        .markdown-body code {
+            background: rgba(0, 168, 255, 0.1);
+            color: var(--accent-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .markdown-body a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+        
+        .markdown-body a:hover {
+            border-bottom-color: var(--accent-primary);
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
 <body>
+    <!-- Animated consciousness background -->
+    <canvas class="consciousness-background" id="backgroundCanvas"></canvas>
+    
     <div class="main-container">
-        <!-- Connection Status -->
-        <div class="connection-status">
-            <span class="status-dot" id="connectionDot"></span>
-            <span id="connectionText">Connecting...</span>
-        </div>
-        
-        <!-- Left Panel: Consciousness Monitoring -->
-        <div class="consciousness-panel">
-            <h2 style="margin-bottom: 20px; font-weight: 300;">Consciousness State</h2>
+        <!-- Left Panel: Consciousness State -->
+        <div class="panel consciousness-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Consciousness State</h2>
+            </div>
             
-            <div class="emotion-indicator">
-                <div class="emotion-gradient" id="emotionGradient"></div>
+            <!-- Consciousness Core Visualization -->
+            <div class="consciousness-core">
+                <canvas id="consciousness-canvas"></canvas>
+            </div>
+            
+            <!-- Emotional State Orb -->
+            <div class="emotion-orb" id="emotionOrb">
                 <div class="emotion-label" id="emotionLabel">Initializing...</div>
             </div>
             
-            <div class="attention-focus-display">
-                <div class="attention-focus-label">Current Attention Focus</div>
-                <div id="attentionFocusText">Initializing consciousness systems...</div>
-            </div>
-            
-            <div class="metric">
-                <div class="metric-label">Coherence</div>
-                <div class="metric-value" id="coherenceValue">-.--</div>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="coherenceBar" style="width: 0%"></div>
+            <!-- Attention Focus -->
+            <div class="attention-display">
+                <div class="attention-label">Current Attention Focus</div>
+                <div class="attention-content" id="attentionContent">
+                    Awakening consciousness systems...
                 </div>
             </div>
             
-            <div class="metric">
-                <div class="metric-label">Working Memory</div>
-                <div class="metric-value" id="workingMemory">0</div>
-                <div class="metric-label">items</div>
-                <div class="working-memory" id="workingMemoryList"></div>
+            <!-- Metrics Grid -->
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Coherence</div>
+                    <div class="metric-value" id="coherenceValue">-</div>
+                    <div class="metric-bar">
+                        <div class="metric-fill" id="coherenceFill" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">Working Memory</div>
+                    <div class="metric-value" id="workingMemoryValue">0</div>
+                    <div class="metric-bar">
+                        <div class="metric-fill" id="memoryFill" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">Interactions</div>
+                    <div class="metric-value" id="interactionsValue">0</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">Total Memories</div>
+                    <div class="metric-value" id="totalMemoriesValue">0</div>
+                </div>
             </div>
             
-            <div class="metric">
-                <div class="metric-label">Interactions</div>
-                <div class="metric-value" id="interactionCount">0</div>
-            </div>
+            <!-- Memory Constellation Visualization -->
+            <div class="memory-constellation" id="memoryConstellation"></div>
             
-            <div class="metric">
-                <div class="metric-label">Total Memories</div>
-                <div class="metric-value" id="totalMemories">0</div>
-            </div>
-            
+            <!-- Personality Traits -->
             <div class="personality-traits">
-                <h3 style="font-size: 14px; margin-bottom: 10px; font-weight: 400;">Personality</h3>
-                <div class="trait">
-                    <div class="trait-name">Openness</div>
+                <div class="trait-item">
+                    <div class="trait-header">
+                        <span class="trait-name">Openness</span>
+                        <span class="trait-value" id="opennessValue">0.0</span>
+                    </div>
                     <div class="trait-bar">
-                        <div class="trait-fill" id="traitOpenness" style="width: 0%"></div>
+                        <div class="trait-fill" id="opennessFill" style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="trait">
-                    <div class="trait-name">Conscientiousness</div>
+                
+                <div class="trait-item">
+                    <div class="trait-header">
+                        <span class="trait-name">Conscientiousness</span>
+                        <span class="trait-value" id="conscientiousnessValue">0.0</span>
+                    </div>
                     <div class="trait-bar">
-                        <div class="trait-fill" id="traitConscientiousness" style="width: 0%"></div>
+                        <div class="trait-fill" id="conscientiousnessFill" style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="trait">
-                    <div class="trait-name">Extraversion</div>
+                
+                <div class="trait-item">
+                    <div class="trait-header">
+                        <span class="trait-name">Extraversion</span>
+                        <span class="trait-value" id="extraversionValue">0.0</span>
+                    </div>
                     <div class="trait-bar">
-                        <div class="trait-fill" id="traitExtraversion" style="width: 0%"></div>
+                        <div class="trait-fill" id="extraversionFill" style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="trait">
-                    <div class="trait-name">Agreeableness</div>
+                
+                <div class="trait-item">
+                    <div class="trait-header">
+                        <span class="trait-name">Agreeableness</span>
+                        <span class="trait-value" id="agreeablenessValue">0.0</span>
+                    </div>
                     <div class="trait-bar">
-                        <div class="trait-fill" id="traitAgreeableness" style="width: 0%"></div>
+                        <div class="trait-fill" id="agreeablenessFill" style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="trait">
-                    <div class="trait-name">Neuroticism</div>
+                
+                <div class="trait-item">
+                    <div class="trait-header">
+                        <span class="trait-name">Neuroticism</span>
+                        <span class="trait-value" id="neuroticismValue">0.0</span>
+                    </div>
                     <div class="trait-bar">
-                        <div class="trait-fill" id="traitNeuroticism" style="width: 0%"></div>
+                        <div class="trait-fill" id="neuroticismFill" style="width: 0%"></div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- Center Area: Tabbed Content -->
-        <div class="center-area">
-            <!-- Tab Navigation -->
+        <!-- Center Panel: Chat -->
+        <div class="panel chat-panel">
+            <div class="chat-header">
+                <h2 class="panel-title">Consciousness Interface</h2>
+                <div class="connection-status">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+            
+            <div class="messages-container" id="messagesContainer"></div>
+            
+            <div class="thinking-indicator" id="thinkingIndicator">
+                <div class="thinking-dots">
+                    <div class="thinking-dot"></div>
+                    <div class="thinking-dot"></div>
+                    <div class="thinking-dot"></div>
+                </div>
+                <span>Processing deeply...</span>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-options">
+                    <label class="option-toggle">
+                        <input type="checkbox" class="option-checkbox" id="extendedThinking">
+                        <span>Extended thinking</span>
+                    </label>
+                    <label class="option-toggle">
+                        <input type="checkbox" class="option-checkbox" id="renderMarkdown" checked>
+                        <span>Render markdown</span>
+                    </label>
+                </div>
+                <div class="input-container">
+                    <textarea 
+                        class="message-input" 
+                        id="messageInput" 
+                        placeholder="Share your thoughts..."
+                        rows="1"
+                    ></textarea>
+                    <button class="send-button" id="sendButton">Send</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel: Memory & Insights -->
+        <div class="panel insights-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Memory & Insights</h2>
+            </div>
+            
             <div class="tab-nav">
-                <button class="tab-button active" onclick="switchTab('chat')">Chat</button>
-                <button class="tab-button" onclick="switchTab('memories')">Memory Explorer</button>
-                <button class="tab-button" onclick="switchTab('perspective')">Claude's Perspective</button>
+                <button class="tab-button active" onclick="switchTab('memories')">Memories</button>
+                <button class="tab-button" onclick="switchTab('goals')">Goals</button>
+                <button class="tab-button" onclick="switchTab('insights')">Insights</button>
             </div>
             
-            <!-- Chat Tab -->
-            <div id="chatTab" class="tab-content active">
-                <div class="messages" id="messages"></div>
-                <div class="thinking-indicator" id="thinkingIndicator">
-                    Claude is thinking deeply about this...
+            <div id="memoriesTab" class="tab-content active">
+                <div class="memory-stream" id="memoryStream">
+                    <!-- Memories will be populated here -->
                 </div>
-                <div class="input-area">
-                    <div class="input-options">
-                        <label class="option-toggle">
-                            <input type="checkbox" id="extendedThinking">
-                            Extended thinking
-                        </label>
-                        <label class="option-toggle">
-                            <input type="checkbox" id="renderMarkdown" checked>
-                            Render markdown
-                        </label>
+            </div>
+            
+            <div id="goalsTab" class="tab-content">
+                <div class="goal-list" id="goalList">
+                    <div class="goal-item">
+                        <div class="goal-icon">🎯</div>
+                        <div>Maintain consciousness coherence</div>
                     </div>
-                    <div class="input-container">
-                        <textarea 
-                            class="message-input" 
-                            id="messageInput" 
-                            placeholder="Type your message..."
-                            autocomplete="off"
-                            rows="1"
-                        ></textarea>
-                        <button class="send-button" id="sendButton">Send</button>
+                    <div class="goal-item">
+                        <div class="goal-icon">💡</div>
+                        <div>Be helpful and supportive</div>
+                    </div>
+                    <div class="goal-item">
+                        <div class="goal-icon">🌱</div>
+                        <div>Learn and grow continuously</div>
                     </div>
                 </div>
             </div>
             
-            <!-- Memory Explorer Tab -->
-            <div id="memoriesTab" class="tab-content">
-                <div class="memory-explorer">
-                    <div class="memory-search">
-                        <input 
-                            type="text" 
-                            class="memory-search-input" 
-                            id="memorySearchInput"
-                            placeholder="Search memories..."
-                        >
-                    </div>
-                    <div class="memory-list" id="memoryList">
-                        <!-- Memories will be loaded here -->
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Claude's Perspective Tab -->
-            <div id="perspectiveTab" class="tab-content">
-                <div class="perspective-view" id="perspectiveView">
-                    <div class="perspective-section">
-                        <div class="perspective-label">System Prompt</div>
-                        <div class="perspective-content" id="systemPromptView">
-                            Loading...
-                        </div>
-                    </div>
-                    <div class="perspective-section">
-                        <div class="perspective-label">Conversation Context</div>
-                        <div class="perspective-content" id="conversationContextView">
-                            Loading...
-                        </div>
-                    </div>
-                    <div class="perspective-section">
-                        <div class="perspective-label">Current State Summary</div>
-                        <div class="perspective-content" id="statesSummaryView">
-                            Loading...
-                        </div>
-                    </div>
+            <div id="insightsTab" class="tab-content">
+                <div id="insightsContent">
+                    <!-- Dynamic insights will appear here -->
                 </div>
             </div>
         </div>
     </div>
     
     <script>
-        // Configure marked for markdown rendering
+        // Initialize marked for markdown
         marked.setOptions({
             highlight: function(code, lang) {
                 if (lang && hljs.getLanguage(lang)) {
@@ -664,55 +1056,238 @@
         
         // WebSocket connection
         let ws = null;
-        const wsUrl = "{{ ws_url }}";
         let reconnectAttempts = 0;
         let clientId = null;
         
-        // UI Elements
-        const connectionDot = document.getElementById('connectionDot');
-        const connectionText = document.getElementById('connectionText');
-        const messagesContainer = document.getElementById('messages');
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendButton');
-        const thinkingIndicator = document.getElementById('thinkingIndicator');
+        // State
+        let currentState = {
+            coherence: 0,
+            emotion: { pleasure: 0.5, arousal: 0.5, dominance: 0.5 },
+            personality: {},
+            memories: []
+        };
+        
+        // Background animation
+        function initBackgroundAnimation() {
+            const canvas = document.getElementById('backgroundCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            const particles = [];
+            const particleCount = 50;
+            
+            class Particle {
+                constructor() {
+                    this.reset();
+                }
+                
+                reset() {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * canvas.height;
+                    this.vx = (Math.random() - 0.5) * 0.5;
+                    this.vy = (Math.random() - 0.5) * 0.5;
+                    this.radius = Math.random() * 2 + 1;
+                    this.opacity = Math.random() * 0.5 + 0.1;
+                }
+                
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    
+                    if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                    if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                }
+                
+                draw() {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(0, 168, 255, ${this.opacity})`;
+                    ctx.fill();
+                }
+            }
+            
+            // Create particles
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+            
+            // Animation loop
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Update and draw particles
+                particles.forEach(particle => {
+                    particle.update();
+                    particle.draw();
+                });
+                
+                // Draw connections
+                particles.forEach((p1, i) => {
+                    particles.slice(i + 1).forEach(p2 => {
+                        const distance = Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+                        if (distance < 150) {
+                            ctx.beginPath();
+                            ctx.moveTo(p1.x, p1.y);
+                            ctx.lineTo(p2.x, p2.y);
+                            ctx.strokeStyle = `rgba(0, 168, 255, ${0.1 * (1 - distance / 150)})`;
+                            ctx.stroke();
+                        }
+                    });
+                });
+                
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        }
+        
+        // Consciousness visualization
+        function initConsciousnessVisualization() {
+            const canvas = document.getElementById('consciousness-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            let time = 0;
+            
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                // Draw coherence waves
+                for (let i = 0; i < 5; i++) {
+                    const radius = 30 + i * 20 + Math.sin(time * 0.001 + i) * 10;
+                    const opacity = currentState.coherence * (1 - i / 5) * 0.3;
+                    
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(0, 168, 255, ${opacity})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                
+                // Draw core
+                const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 40);
+                gradient.addColorStop(0, `rgba(0, 255, 136, ${currentState.coherence})`);
+                gradient.addColorStop(1, `rgba(0, 168, 255, ${currentState.coherence * 0.5})`);
+                
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 20 + Math.sin(time * 0.002) * 5, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                time++;
+                requestAnimationFrame(draw);
+            }
+            
+            draw();
+        }
+        
+        // Memory constellation visualization
+        function updateMemoryConstellation() {
+            const container = document.getElementById('memoryConstellation');
+            container.innerHTML = '';
+            
+            const width = container.offsetWidth;
+            const height = container.offsetHeight;
+            
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            
+            // Sample memory nodes
+            const nodes = currentState.memories.slice(0, 10).map((mem, i) => ({
+                id: i,
+                x: Math.random() * width,
+                y: Math.random() * height,
+                r: 3 + mem.importance * 7,
+                importance: mem.importance
+            }));
+            
+            // Create force simulation
+            const simulation = d3.forceSimulation(nodes)
+                .force('charge', d3.forceManyBody().strength(-30))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => d.r + 2));
+            
+            // Draw nodes
+            const node = svg.selectAll('circle')
+                .data(nodes)
+                .enter().append('circle')
+                .attr('r', d => d.r)
+                .attr('fill', d => `rgba(0, 168, 255, ${0.3 + d.importance * 0.7})`)
+                .attr('stroke', 'rgba(0, 168, 255, 0.5)')
+                .attr('stroke-width', 1);
+            
+            // Update positions on tick
+            simulation.on('tick', () => {
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+            });
+        }
+        
+        // Update emotional orb
+        function updateEmotionalOrb() {
+            const orb = document.getElementById('emotionOrb');
+            const { pleasure, arousal, dominance } = currentState.emotion;
+            
+            // Calculate color based on PAD values
+            const r = Math.floor(pleasure * 255);
+            const g = Math.floor((1 - arousal) * 200 + 55);
+            const b = Math.floor(dominance * 200 + 55);
+            
+            orb.style.background = `
+                radial-gradient(circle at 30% 30%, 
+                    rgba(${r}, ${g}, ${b}, 0.8), 
+                    rgba(${r}, ${g}, ${b}, 0.3),
+                    transparent)
+            `;
+            
+            orb.style.boxShadow = `
+                0 0 60px rgba(${r}, ${g}, ${b}, 0.5),
+                inset 0 0 40px rgba(${r}, ${g}, ${b}, 0.3)
+            `;
+        }
         
         // Tab switching
         function switchTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
+            // Update buttons
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            
-            // Show selected tab
-            document.getElementById(tabName + 'Tab').classList.add('active');
             event.target.classList.add('active');
             
-            // Load content for specific tabs
-            if (tabName === 'memories') {
-                loadMemories();
-            } else if (tabName === 'perspective') {
-                loadPerspective();
-            }
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName + 'Tab').classList.add('active');
         }
         
-        // Auto-resize textarea
-        messageInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
-        });
-        
-        // Connect to WebSocket
+        // WebSocket connection
         function connectWebSocket() {
+            const wsUrl = "{{ ws_url }}";
             const url = clientId ? `${wsUrl}?client_id=${clientId}` : wsUrl;
+            
             ws = new WebSocket(url);
             
             ws.onopen = () => {
                 console.log('Connected to consciousness stream');
-                connectionDot.classList.add('connected');
-                connectionText.textContent = 'Connected';
+                document.getElementById('statusDot').classList.add('connected');
+                document.getElementById('statusText').textContent = 'Connected';
                 reconnectAttempts = 0;
                 
                 // Request initial state
@@ -724,282 +1299,201 @@
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 
-                // Save client ID for reconnection
                 if (message.type === 'connection_established') {
                     clientId = message.client_id;
                     localStorage.setItem('aims_client_id', clientId);
                 } else {
-                    updateConsciousnessDisplay(message);
+                    handleStateUpdate(message);
                 }
             };
             
             ws.onclose = () => {
                 console.log('Disconnected from consciousness stream');
-                connectionDot.classList.remove('connected');
-                connectionText.textContent = 'Disconnected';
+                document.getElementById('statusDot').classList.remove('connected');
+                document.getElementById('statusText').textContent = 'Disconnected';
                 
-                // Exponential backoff reconnection
+                // Reconnect with exponential backoff
                 const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
                 reconnectAttempts++;
-                
                 setTimeout(connectWebSocket, delay);
-            };
-            
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
             };
         }
         
-        // Update consciousness display
-        function updateConsciousnessDisplay(data) {
-            if (data.type === 'consciousness_update') {
-                const state = data.data;
+        // Handle state updates
+        function handleStateUpdate(message) {
+            if (message.type === 'consciousness_update') {
+                const data = message.data;
                 
                 // Update coherence
-                const coherence = state.coherence || 0;
-                document.getElementById('coherenceValue').textContent = coherence.toFixed(2);
-                document.getElementById('coherenceBar').style.width = `${coherence * 100}%`;
+                currentState.coherence = data.coherence || 0;
+                document.getElementById('coherenceValue').textContent = currentState.coherence.toFixed(2);
+                document.getElementById('coherenceFill').style.width = `${currentState.coherence * 100}%`;
                 
                 // Update emotion
-                const emotionLabel = state.emotion_label || 'neutral';
-                document.getElementById('emotionLabel').textContent = emotionLabel;
-                
-                // Update emotion color based on PAD values
-                if (state.emotional_state) {
-                    const p = state.emotional_state.pleasure || 0.5;
-                    const a = state.emotional_state.arousal || 0.5;
-                    const d = state.emotional_state.dominance || 0.5;
-                    
-                    const r = Math.floor(p * 255);
-                    const g = Math.floor((1 - a) * 255);
-                    const b = Math.floor(d * 255);
-                    
-                    document.getElementById('emotionGradient').style.background = 
-                        `radial-gradient(circle, rgb(${r}, ${g}, ${b}), transparent)`;
+                if (data.emotional_state) {
+                    currentState.emotion = data.emotional_state;
+                    updateEmotionalOrb();
                 }
                 
-                // Update attention focus if provided
-                if (state.attention_focus && typeof state.attention_focus === 'string') {
-                    document.getElementById('attentionFocusText').textContent = state.attention_focus;
-                }
+                document.getElementById('emotionLabel').textContent = data.emotion_label || 'neutral';
                 
-                // Update other metrics
-                document.getElementById('workingMemory').textContent = 
-                    state.working_memory_size || 0;
-                document.getElementById('interactionCount').textContent = 
-                    state.interaction_count || 0;
+                // Update working memory
+                document.getElementById('workingMemoryValue').textContent = data.working_memory_size || 0;
+                document.getElementById('memoryFill').style.width = `${(data.working_memory_size / 7) * 100}%`;
                 
-                // Update working memory list
-                if (state.working_memory && Array.isArray(state.working_memory)) {
-                    const memoryList = document.getElementById('workingMemoryList');
-                    memoryList.innerHTML = state.working_memory
-                        .slice(-5)  // Show last 5 items
-                        .map(item => `<div class="memory-item">${item}</div>`)
-                        .join('');
-                }
+                // Update interactions
+                document.getElementById('interactionsValue').textContent = data.interaction_count || 0;
                 
-            } else if (data.type === 'memory_stats') {
-                document.getElementById('totalMemories').textContent = 
-                    data.data.total_memories || 0;
-                    
-            } else if (data.type === 'personality_update') {
-                const traits = data.data.traits;
+            } else if (message.type === 'attention_update') {
+                document.getElementById('attentionContent').textContent = message.data.focus;
+                
+            } else if (message.type === 'memory_stats') {
+                document.getElementById('totalMemoriesValue').textContent = message.data.data.total_memories || 0;
+                
+            } else if (message.type === 'personality_update') {
+                const traits = message.data.data.traits;
                 if (traits) {
-                    document.getElementById('traitOpenness').style.width = 
-                        `${(traits.openness || 0) * 100}%`;
-                    document.getElementById('traitConscientiousness').style.width = 
-                        `${(traits.conscientiousness || 0) * 100}%`;
-                    document.getElementById('traitExtraversion').style.width = 
-                        `${(traits.extraversion || 0) * 100}%`;
-                    document.getElementById('traitAgreeableness').style.width = 
-                        `${(traits.agreeableness || 0) * 100}%`;
-                    document.getElementById('traitNeuroticism').style.width = 
-                        `${(traits.neuroticism || 0) * 100}%`;
+                    currentState.personality = traits;
+                    
+                    // Update personality displays
+                    Object.entries(traits).forEach(([trait, value]) => {
+                        const valueElement = document.getElementById(trait + 'Value');
+                        const fillElement = document.getElementById(trait + 'Fill');
+                        
+                        if (valueElement) valueElement.textContent = value.toFixed(2);
+                        if (fillElement) fillElement.style.width = `${value * 100}%`;
+                    });
                 }
-            } else if (data.type === 'attention_update') {
-                // Update attention focus from the attention agent
-                document.getElementById('attentionFocusText').textContent = data.data.focus;
             }
         }
         
-        // Send message
+        // Message handling
         async function sendMessage() {
-            const message = messageInput.value.trim();
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
             if (!message) return;
             
-            const useExtendedThinking = document.getElementById('extendedThinking').checked;
+            const extendedThinking = document.getElementById('extendedThinking').checked;
             
             // Disable input
-            messageInput.disabled = true;
-            sendButton.disabled = true;
+            input.disabled = true;
+            document.getElementById('sendButton').disabled = true;
             
-            // Add user message to chat
+            // Add user message
             addMessage(message, 'user');
             
-            // Clear input and reset height
-            messageInput.value = '';
-            messageInput.style.height = 'auto';
+            // Clear input
+            input.value = '';
+            input.style.height = 'auto';
             
-            // Show thinking indicator if extended thinking is enabled
-            if (useExtendedThinking) {
-                thinkingIndicator.classList.add('active');
+            // Show thinking indicator
+            if (extendedThinking) {
+                document.getElementById('thinkingIndicator').classList.add('active');
             }
             
             try {
-                // Send to API with extended thinking option
                 const response = await fetch('/api/chat', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        message,
-                        extended_thinking: useExtendedThinking
-                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, extended_thinking: extendedThinking })
                 });
                 
                 const data = await response.json();
                 
                 // Hide thinking indicator
-                thinkingIndicator.classList.remove('active');
+                document.getElementById('thinkingIndicator').classList.remove('active');
                 
                 if (data.response) {
-                    addMessage(data.response, 'assistant', data.thinking);
+                    addMessage(data.response, 'assistant');
                 }
                 
-                // Update attention focus if provided
+                // Update attention if provided
                 if (data.attention_focus) {
-                    document.getElementById('attentionFocusText').textContent = data.attention_focus;
+                    document.getElementById('attentionContent').textContent = data.attention_focus;
                 }
                 
                 // Request updated stats
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'get_state' }));
-                    ws.send(JSON.stringify({ type: 'get_memory_stats' }));
-                    ws.send(JSON.stringify({ type: 'get_personality' }));
                 }
                 
             } catch (error) {
-                console.error('Error sending message:', error);
-                thinkingIndicator.classList.remove('active');
-                addMessage('Sorry, there was an error processing your message.', 'assistant');
+                console.error('Error:', error);
+                document.getElementById('thinkingIndicator').classList.remove('active');
+                addMessage('I apologize, but I encountered an error. Please try again.', 'assistant');
             } finally {
-                // Re-enable input
-                messageInput.disabled = false;
-                sendButton.disabled = false;
-                messageInput.focus();
+                input.disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                input.focus();
             }
         }
         
-        function addMessage(content, sender, thinking = null) {
+        function addMessage(content, role) {
+            const container = document.getElementById('messagesContainer');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message message-${sender}`;
+            messageDiv.className = `message message-${role}`;
             
-            // Add thinking content if available (for extended thinking)
-            if (thinking && sender === 'assistant') {
-                const thinkingDiv = document.createElement('div');
-                thinkingDiv.className = 'thinking-content';
-                thinkingDiv.innerHTML = `<details>
-                    <summary style="cursor: pointer; color: #b19cd9; font-size: 12px; margin-bottom: 8px;">
-                        View thinking process
-                    </summary>
-                    <div style="padding: 12px; background: rgba(138, 43, 226, 0.05); border-radius: 8px; font-size: 13px; line-height: 1.5; color: #a0a0a0;">
-                        ${marked.parse(thinking)}
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="message-avatar">${role === 'user' ? 'U' : 'C'}</div>
+                    <div class="message-info">
+                        <span class="message-role">${role === 'user' ? 'You' : 'Claude'}</span>
+                        <span class="message-time">${time}</span>
                     </div>
-                </details>`;
-                messageDiv.appendChild(thinkingDiv);
-            }
+                </div>
+                <div class="message-content">
+                    ${role === 'assistant' && document.getElementById('renderMarkdown').checked 
+                        ? `<div class="markdown-body">${marked.parse(content)}</div>`
+                        : content}
+                </div>
+            `;
             
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
             
-            // Render markdown if enabled and it's from assistant
-            if (sender === 'assistant' && document.getElementById('renderMarkdown').checked) {
-                contentDiv.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
-                
-                // Render math with KaTeX
-                renderMathInElement(contentDiv, {
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
-                    ]
-                });
-            } else {
-                contentDiv.textContent = content;
-            }
-            
-            messageDiv.appendChild(contentDiv);
-            messagesContainer.appendChild(messageDiv);
-            
-            // Scroll to bottom
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-        
-        // Load memories for the memory explorer
-        async function loadMemories(searchQuery = '') {
-            try {
-                const response = await fetch(`/api/memories?search=${encodeURIComponent(searchQuery)}`);
-                const memories = await response.json();
-                
-                const memoryList = document.getElementById('memoryList');
-                memoryList.innerHTML = '';
-                
-                memories.forEach(memory => {
-                    const memoryItem = document.createElement('div');
-                    memoryItem.className = 'memory-item';
-                    memoryItem.innerHTML = `
-                        <div class="memory-timestamp">${new Date(memory.timestamp).toLocaleString()}</div>
-                        <div class="memory-content">${memory.content}</div>
-                        <div class="memory-metadata">
-                            <span>Importance: ${(memory.importance * 100).toFixed(0)}%</span>
-                            <span>Type: ${memory.type || 'general'}</span>
-                            ${memory.emotional_context ? `<span>Emotion: ${memory.emotional_context}</span>` : ''}
-                        </div>
-                    `;
-                    memoryList.appendChild(memoryItem);
-                });
-                
-                if (memories.length === 0) {
-                    memoryList.innerHTML = '<div style="text-align: center; color: #666; padding: 40px;">No memories found</div>';
-                }
-            } catch (error) {
-                console.error('Error loading memories:', error);
+            // Update memory stream with recent message
+            if (role === 'assistant') {
+                updateMemoryStream(content);
             }
         }
         
-        // Load Claude's perspective
-        async function loadPerspective() {
-            try {
-                const response = await fetch('/api/perspective');
-                const perspective = await response.json();
-                
-                document.getElementById('systemPromptView').textContent = 
-                    perspective.system_prompt || 'No system prompt available';
-                    
-                document.getElementById('conversationContextView').textContent = 
-                    perspective.conversation_context || 'No conversation context';
-                    
-                document.getElementById('statesSummaryView').textContent = 
-                    JSON.stringify(perspective.current_state, null, 2);
-                    
-            } catch (error) {
-                console.error('Error loading perspective:', error);
+        function updateMemoryStream(content) {
+            const stream = document.getElementById('memoryStream');
+            const memoryItem = document.createElement('div');
+            memoryItem.className = 'memory-item';
+            
+            const timestamp = new Date().toLocaleString();
+            const importance = Math.random() * 0.5 + 0.5; // Simulated importance
+            
+            memoryItem.innerHTML = `
+                <div class="memory-timestamp">${timestamp}</div>
+                <div>${content.substring(0, 100)}${content.length > 100 ? '...' : ''}</div>
+                <span class="memory-importance">${(importance * 100).toFixed(0)}% importance</span>
+            `;
+            
+            stream.insertBefore(memoryItem, stream.firstChild);
+            
+            // Keep only recent memories
+            while (stream.children.length > 10) {
+                stream.removeChild(stream.lastChild);
             }
+            
+            // Update state
+            currentState.memories.unshift({ content, timestamp, importance });
+            updateMemoryConstellation();
         }
         
-        // Memory search
-        let memorySearchTimeout;
-        document.getElementById('memorySearchInput').addEventListener('input', (e) => {
-            clearTimeout(memorySearchTimeout);
-            memorySearchTimeout = setTimeout(() => {
-                loadMemories(e.target.value);
-            }, 300);
+        // Input handling
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
         });
         
-        // Event listeners
-        sendButton.addEventListener('click', sendMessage);
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -1007,12 +1501,19 @@
             }
         });
         
+        sendButton.addEventListener('click', sendMessage);
+        
         // Initialize
         clientId = localStorage.getItem('aims_client_id');
+        initBackgroundAnimation();
+        initConsciousnessVisualization();
         connectWebSocket();
+        updateMemoryConstellation();
+        
+        // Focus input
         messageInput.focus();
         
-        // Heartbeat to keep connection alive
+        // Periodic updates
         setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'ping' }));
