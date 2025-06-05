@@ -37,12 +37,6 @@ aims/
 └── run.sh           # Quick start script
 ```
 
-## Key Commands
-- Setup: `./setup.sh`
-- Run: `./run.sh`
-- Test: `source venv/bin/activate && pytest tests/`
-- Stop: `Ctrl+C` then `docker-compose down`
-
 ## Configuration
 Edit `.env` file for:
 - ANTHROPIC_API_KEY (required)
