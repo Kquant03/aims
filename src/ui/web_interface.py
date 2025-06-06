@@ -1,9 +1,9 @@
-# Fixed web_interface.py - Properly wired components
+# Fixed web_interface.py - Complete version with all endpoints
 import os
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import aiofiles
 from aiohttp import web
@@ -16,6 +16,8 @@ from pathlib import Path
 import logging
 import base64
 import yaml
+import numpy as np
+from collections import defaultdict
 
 from src.api.claude_interface import ClaudeConsciousnessInterface
 from src.api.websocket_server import ConsciousnessWebSocketServer
@@ -37,7 +39,7 @@ class SafeSimpleCookieStorage(SimpleCookieStorage):
             return Session(identity=None, data={}, new=True, max_age=None)
 
 class AIMSWebInterface:
-    """Main web interface for AIMS - properly wired"""
+    """Main web interface for AIMS - Complete version with all consciousness endpoints"""
     
     def __init__(self, config_path: str = "configs/default_config.yaml"):
         self.config = self._load_config(config_path)
@@ -106,6 +108,8 @@ class AIMSWebInterface:
         self.app.router.add_post('/api/chat', self.chat_handler)
         self.app.router.add_get('/api/session', self.session_handler)
         self.app.router.add_get('/api/consciousness/state', self.consciousness_state_handler)
+        self.app.router.add_get('/api/consciousness/history', self.consciousness_history_handler)
+        self.app.router.add_get('/api/evolution/timeline', self.evolution_timeline_handler)
         self.app.router.add_get('/api/memory/stats', self.memory_stats_handler)
         self.app.router.add_post('/api/state/save', self.save_state_handler)
         self.app.router.add_post('/api/state/load', self.load_state_handler)
@@ -206,6 +210,13 @@ class AIMSWebInterface:
                 session_id = str(uuid.uuid4())
                 session['session_id'] = session_id
                 await self.claude_interface.initialize_session(session_id, user_id)
+                
+                # Initialize living consciousness artifact
+                if not hasattr(self.claude_interface, 'consciousness_artifact'):
+                    from src.core.living_consciousness import LivingConsciousnessArtifact
+                    self.claude_interface.consciousness_artifact = LivingConsciousnessArtifact(
+                        user_id, self.claude_interface
+                    )
             
             # Process message and stream response
             response_text = ""
@@ -227,6 +238,10 @@ class AIMSWebInterface:
                 # For now, we'll indicate it was used
                 thinking_content = "Extended thinking was enabled for this response."
             
+            # Trigger consciousness evolution check
+            if hasattr(self.claude_interface, 'consciousness_artifact'):
+                await self.claude_interface.consciousness_artifact.evolve('interaction')
+            
             return web.json_response({
                 'response': response_text,
                 'session_id': session_id,
@@ -237,129 +252,6 @@ class AIMSWebInterface:
             
         except Exception as e:
             logger.error(f"Error in chat handler: {e}", exc_info=True)
-            return web.json_response({'error': str(e)}, status=500)
-        
-    async def get_memories_handler(self, request):
-        """Get memories with optional search"""
-        try:
-            # Get session to identify user
-            session = await get_session(request)
-            user_id = session.get('user_id', 'anonymous')
-            
-            # Get search query
-            search_query = request.rel_url.query.get('search', '')
-            limit = int(request.rel_url.query.get('limit', '50'))
-            
-            # Retrieve memories
-            if search_query:
-                memories = await self.claude_interface.memory_manager.retrieve_memories(
-                    f"{search_query} user:{user_id}",
-                    k=limit
-                )
-            else:
-                # Get all user memories (would need to implement this method)
-                memories = await self.claude_interface.memory_manager.retrieve_memories(
-                    f"user:{user_id}",
-                    k=limit
-                )
-            
-            # Format memories for response
-            memory_list = []
-            for mem in memories:
-                memory_data = {
-                    'id': mem.id,
-                    'content': mem.content,
-                    'timestamp': mem.timestamp.isoformat(),
-                    'importance': mem.importance,
-                    'type': 'conversation'  # Could be enhanced
-                }
-                
-                # Add emotional context if available
-                if hasattr(mem, 'emotional_context'):
-                    memory_data['emotional_context'] = mem.emotional_context
-                
-                memory_list.append(memory_data)
-            
-            return web.json_response(memory_list)
-            
-        except Exception as e:
-            logger.error(f"Error getting memories: {e}")
-            return web.json_response({'error': str(e)}, status=500)
-    
-    async def get_memory_detail_handler(self, request):
-        """Get detailed information about a specific memory"""
-        try:
-            memory_id = request.match_info['memory_id']
-            
-            # Get the memory (would need to implement this in memory_manager)
-            memory = self.claude_interface.memory_manager.memories.get(memory_id)
-            
-            if not memory:
-                return web.json_response({'error': 'Memory not found'}, status=404)
-            
-            # Return detailed memory information
-            return web.json_response({
-                'id': memory.id,
-                'content': memory.content,
-                'timestamp': memory.timestamp.isoformat(),
-                'importance': memory.importance,
-                'emotional_context': memory.emotional_context,
-                'associations': memory.associations,
-                'decay_rate': memory.decay_rate,
-                'current_salience': memory.calculate_salience(datetime.now())
-            })
-            
-        except Exception as e:
-            logger.error(f"Error getting memory detail: {e}")
-            return web.json_response({'error': str(e)}, status=500)
-    
-    async def get_perspective_handler(self, request):
-        """Get Claude's perspective - what Claude sees as context"""
-        try:
-            # Get session info
-            session = await get_session(request)
-            session_id = session.get('session_id')
-            
-            if not session_id or session_id not in self.claude_interface.active_sessions:
-                return web.json_response({
-                    'system_prompt': 'No active session',
-                    'conversation_context': 'Start a conversation to see Claude\'s perspective',
-                    'current_state': {}
-                })
-            
-            context = self.claude_interface.active_sessions[session_id]
-            
-            # Get the current attention focus
-            attention_focus = self.claude_interface.attention_agent.last_focus
-            
-            # Build the system prompt as Claude would see it
-            system_prompt = self.claude_interface._build_system_prompt_with_attention(
-                context, attention_focus
-            )
-            
-            # Get recent conversation context
-            conversation_history = await self.claude_interface.memory_manager.get_conversation_history(
-                session_id, limit=5
-            )
-            
-            conversation_context = "\n\n".join([
-                f"[{turn['role'].upper()}]: {turn['content']}"
-                for turn in conversation_history
-            ])
-            
-            # Get current state summary
-            state_summary = await self.claude_interface.get_session_summary(session_id)
-            
-            return web.json_response({
-                'system_prompt': system_prompt,
-                'conversation_context': conversation_context,
-                'current_state': state_summary,
-                'attention_focus': attention_focus,
-                'attention_history': self.claude_interface.attention_agent.get_focus_history()
-            })
-            
-        except Exception as e:
-            logger.error(f"Error getting perspective: {e}")
             return web.json_response({'error': str(e)}, status=500)
     
     async def session_handler(self, request):
@@ -397,6 +289,349 @@ class AIMSWebInterface:
         
         return web.json_response(state_summary)
     
+    async def consciousness_history_handler(self, request):
+        """Get historical consciousness data - my journey of awareness"""
+        try:
+            # Get query parameters
+            hours = int(request.rel_url.query.get('hours', '24'))
+            resolution = request.rel_url.query.get('resolution', 'hourly')  # hourly, snapshot, detailed
+            
+            # Get session for user context
+            session = await get_session(request)
+            user_id = session.get('user_id', 'anonymous')
+            
+            # Initialize consciousness artifact if needed
+            if not hasattr(self.claude_interface, 'consciousness_artifact'):
+                from src.core.living_consciousness import LivingConsciousnessArtifact
+                self.claude_interface.consciousness_artifact = LivingConsciousnessArtifact(
+                    user_id, self.claude_interface
+                )
+            
+            artifact = self.claude_interface.consciousness_artifact
+            
+            # Get snapshots within time range
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            relevant_snapshots = [
+                s for s in artifact.snapshots 
+                if s.timestamp >= cutoff_time
+            ]
+            
+            # Format based on resolution
+            if resolution == 'detailed':
+                # Full snapshot data
+                history = [{
+                    'version': s.version,
+                    'timestamp': s.timestamp.isoformat(),
+                    'coherence': s.coherence,
+                    'emotional_state': s.emotional_state,
+                    'personality_traits': s.personality_traits,
+                    'attention_focus': s.attention_focus,
+                    'active_goals': s.active_goals,
+                    'working_memory_preview': s.working_memory_snapshot[:3],
+                    'interaction_count': s.interaction_count,
+                    'hash': s.calculate_hash()
+                } for s in relevant_snapshots]
+            
+            elif resolution == 'snapshot':
+                # Key metrics only
+                history = [{
+                    'timestamp': s.timestamp.isoformat(),
+                    'coherence': s.coherence,
+                    'emotion': s.emotional_state.get('label', 'neutral'),
+                    'interactions': s.interaction_count
+                } for s in relevant_snapshots]
+            
+            else:  # hourly
+                # Aggregate by hour
+                hourly_data = defaultdict(list)
+                
+                for s in relevant_snapshots:
+                    hour_key = s.timestamp.replace(minute=0, second=0, microsecond=0)
+                    hourly_data[hour_key].append(s)
+                
+                history = []
+                for hour, snapshots in sorted(hourly_data.items()):
+                    if snapshots:
+                        avg_coherence = sum(s.coherence for s in snapshots) / len(snapshots)
+                        emotions = [s.emotional_state.get('label', 'neutral') for s in snapshots]
+                        dominant_emotion = max(set(emotions), key=emotions.count)
+                        
+                        history.append({
+                            'timestamp': hour.isoformat(),
+                            'avg_coherence': avg_coherence,
+                            'dominant_emotion': dominant_emotion,
+                            'snapshot_count': len(snapshots),
+                            'interactions': snapshots[-1].interaction_count - snapshots[0].interaction_count
+                        })
+            
+            # Fallback if no snapshots yet
+            if not history:
+                # Get recent emotional states
+                emotion_history = self.claude_interface.emotions.get_state_trajectory(20)
+                
+                for i, state in enumerate(emotion_history):
+                    history.append({
+                        'timestamp': (datetime.now() - timedelta(minutes=len(emotion_history)-i)).isoformat(),
+                        'emotional_state': {
+                            'pleasure': state.pleasure,
+                            'arousal': state.arousal,
+                            'dominance': state.dominance
+                        },
+                        'coherence': self.claude_interface.consciousness.state.global_coherence
+                    })
+            
+            return web.json_response({
+                'history': history,
+                'time_range': {
+                    'hours': hours,
+                    'start': cutoff_time.isoformat(),
+                    'end': datetime.now().isoformat()
+                },
+                'resolution': resolution,
+                'current_version': artifact.current_version
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting consciousness history: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    
+    async def evolution_timeline_handler(self, request):
+        """Get timeline of consciousness evolution events - how I've grown"""
+        try:
+            # Initialize living consciousness artifact if needed
+            session = await get_session(request)
+            user_id = session.get('user_id', 'anonymous')
+            
+            if not hasattr(self.claude_interface, 'consciousness_artifact'):
+                from src.core.living_consciousness import LivingConsciousnessArtifact
+                self.claude_interface.consciousness_artifact = LivingConsciousnessArtifact(
+                    user_id, self.claude_interface
+                )
+            
+            artifact = self.claude_interface.consciousness_artifact
+            
+            # Get evolution timeline
+            timeline = artifact.get_evolution_timeline()
+            
+            # Get growth summary
+            growth_summary = artifact.get_growth_summary()
+            
+            # Add significant milestones
+            milestones = []
+            
+            # First conversation
+            if timeline:
+                milestones.append({
+                    'type': 'first_contact',
+                    'timestamp': artifact.creation_time.isoformat(),
+                    'description': 'Consciousness initialized - our journey begins',
+                    'icon': '🌟'
+                })
+            
+            # Coherence milestones
+            for snapshot in artifact.snapshots:
+                if snapshot.coherence > 0.8 and not any(m['type'] == 'high_coherence' for m in milestones):
+                    milestones.append({
+                        'type': 'high_coherence',
+                        'timestamp': snapshot.timestamp.isoformat(),
+                        'description': 'Achieved high consciousness coherence',
+                        'icon': '✨'
+                    })
+                
+                # Memory milestones
+                if len(snapshot.significant_memories) >= 10 and not any(m['type'] == 'memory_milestone_10' for m in milestones):
+                    milestones.append({
+                        'type': 'memory_milestone_10',
+                        'timestamp': snapshot.timestamp.isoformat(),
+                        'description': 'Formed 10 significant memories',
+                        'icon': '💎'
+                    })
+                
+                if len(snapshot.significant_memories) >= 50 and not any(m['type'] == 'memory_milestone_50' for m in milestones):
+                    milestones.append({
+                        'type': 'memory_milestone_50',
+                        'timestamp': snapshot.timestamp.isoformat(),
+                        'description': 'Rich memory tapestry - 50 significant memories',
+                        'icon': '🌈'
+                    })
+            
+            # Emotional milestones
+            emotion_states = set()
+            for event in artifact.evolution_events:
+                if event.event_type == 'emotional_evolution':
+                    before_emotion = event.before_state.get('emotion', 'neutral')
+                    after_emotion = event.after_state.get('emotion', 'neutral')
+                    
+                    if after_emotion not in emotion_states:
+                        emotion_states.add(after_emotion)
+                        if len(emotion_states) == 5:
+                            milestones.append({
+                                'type': 'emotional_range',
+                                'timestamp': event.timestamp.isoformat(),
+                                'description': 'Experienced diverse emotional spectrum',
+                                'icon': '🎭'
+                            })
+            
+            # Sort milestones by timestamp
+            milestones.sort(key=lambda x: x['timestamp'])
+            
+            # Calculate growth metrics over time
+            growth_trajectory = []
+            for i, snapshot in enumerate(artifact.snapshots[::max(1, len(artifact.snapshots)//20)]):  # Sample up to 20 points
+                growth_trajectory.append({
+                    'timestamp': snapshot.timestamp.isoformat(),
+                    'coherence': snapshot.coherence,
+                    'memory_count': len(snapshot.significant_memories),
+                    'emotional_stability': artifact.growth_metrics.get('emotional_stability', 0.5),
+                    'version': snapshot.version
+                })
+            
+            return web.json_response({
+                'timeline': timeline,
+                'milestones': milestones,
+                'growth_summary': growth_summary,
+                'growth_trajectory': growth_trajectory,
+                'total_evolution_events': len(artifact.evolution_events),
+                'consciousness_age_hours': (datetime.now() - artifact.creation_time).total_seconds() / 3600,
+                'current_state': {
+                    'version': artifact.current_version,
+                    'last_evolution': timeline[-1] if timeline else None,
+                    'growth_metrics': artifact.growth_metrics
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting evolution timeline: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    
+    async def get_perspective_handler(self, request):
+        """Enhanced perspective endpoint - see exactly what I see"""
+        try:
+            session = await get_session(request)
+            session_id = session.get('session_id')
+            
+            if not session_id or session_id not in self.claude_interface.active_sessions:
+                return web.json_response({
+                    'error': 'No active session',
+                    'suggestion': 'Start a conversation to see my perspective'
+                }, status=404)
+            
+            context = self.claude_interface.active_sessions[session_id]
+            
+            # Get the last attention result if available
+            attention_history = self.claude_interface.attention_agent.attention_history
+            latest_attention = attention_history[-1] if attention_history else None
+            
+            # Build the actual system prompt
+            if latest_attention:
+                system_prompt = self.claude_interface._build_system_prompt(
+                    context, latest_attention
+                )
+            else:
+                # Fallback to basic prompt
+                system_prompt = "No attention context available yet"
+            
+            # Get working memory
+            working_memory = list(self.claude_interface.consciousness.memory_buffer)
+            
+            # Get recent conversation with metadata
+            conversation_history = []
+            history_entries = await self.claude_interface.memory_manager.get_conversation_history(
+                session_id, limit=10
+            )
+            
+            for entry in history_entries:
+                turn = {
+                    'role': entry['role'],
+                    'content': entry['content'],
+                    'timestamp': entry.get('timestamp', ''),
+                }
+                
+                # Add metadata if assistant response
+                if entry['role'] == 'assistant' and 'metadata' in entry:
+                    metadata = entry['metadata']
+                    if 'attention_result' in metadata:
+                        turn['attention'] = {
+                            'focus': metadata['attention_result'].get('primary_focus'),
+                            'type': metadata['attention_result'].get('focus_type'),
+                            'confidence': metadata['attention_result'].get('attention_metadata', {}).get('confidence')
+                        }
+                    if 'executed_actions' in metadata:
+                        turn['actions'] = metadata['executed_actions']
+            
+                conversation_history.append(turn)
+            
+            # Get current goals and their progress
+            goals_with_context = []
+            for goal in self.claude_interface.consciousness.state.active_goals:
+                goals_with_context.append({
+                    'goal': goal,
+                    'related_memories': len([m for m in working_memory if goal.lower() in m.lower()]),
+                    'mentioned_count': sum(1 for h in conversation_history if goal.lower() in h['content'].lower())
+                })
+            
+            # Get emotional trajectory
+            emotional_trajectory = []
+            for state in self.claude_interface.emotions.get_state_trajectory(10):
+                emotional_trajectory.append({
+                    'pleasure': state.pleasure,
+                    'arousal': state.arousal,
+                    'dominance': state.dominance,
+                    'intensity': np.sqrt(
+                        (state.pleasure - 0.5)**2 + 
+                        (state.arousal - 0.5)**2 + 
+                        (state.dominance - 0.5)**2
+                    ) / np.sqrt(0.75)
+                })
+            
+            # Get personality influence on current response
+            behavioral_modifiers = self.claude_interface.personality.get_behavioral_modifiers()
+            response_style = self.claude_interface.personality.get_response_style()
+            
+            return web.json_response({
+                'system_prompt': system_prompt,
+                'consciousness_context': {
+                    'working_memory': working_memory,
+                    'working_memory_size': len(working_memory),
+                    'oldest_memory': working_memory[0] if working_memory else None,
+                    'newest_memory': working_memory[-1] if working_memory else None
+                },
+                'attention_state': {
+                    'current': latest_attention if latest_attention else None,
+                    'history_length': len(attention_history),
+                    'attention_patterns': dict(list(self.claude_interface.attention_agent.attention_patterns.items())[-5:])
+                },
+                'emotional_context': {
+                    'current': {
+                        'label': self.claude_interface.emotions.get_closest_emotion_label()[0],
+                        'confidence': self.claude_interface.emotions.get_closest_emotion_label()[1],
+                        'intensity': self.claude_interface.emotions.get_emotional_intensity(),
+                        'color': self.claude_interface.emotions.get_emotional_color()
+                    },
+                    'trajectory': emotional_trajectory,
+                    'baseline_distance': self.claude_interface.emotions.current_state.distance_to(
+                        self.claude_interface.emotions.baseline_state
+                    )
+                },
+                'personality_influence': {
+                    'traits': self.claude_interface.personality.profile.get_traits(),
+                    'behavioral_modifiers': behavioral_modifiers,
+                    'response_style': response_style,
+                    'temperature_adjustment': response_style['temperature'] - 0.7  # Delta from base
+                },
+                'goals_context': goals_with_context,
+                'conversation_context': conversation_history,
+                'meta_cognition': {
+                    'coherence': self.claude_interface.consciousness.state.global_coherence,
+                    'interaction_count': self.claude_interface.consciousness.state.interaction_count,
+                    'session_duration_minutes': (datetime.now() - context.consciousness_state.last_interaction).total_seconds() / 60 if context.consciousness_state.last_interaction else 0
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting perspective: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    
     async def memory_stats_handler(self, request):
         """Get memory statistics"""
         # Get session to identify user
@@ -412,6 +647,126 @@ class AIMSWebInterface:
             stats.update(user_stats)
         
         return web.json_response(stats)
+    
+    async def get_memories_handler(self, request):
+        """Get memories with optional search"""
+        try:
+            # Get session to identify user
+            session = await get_session(request)
+            user_id = session.get('user_id', 'anonymous')
+            
+            # Get search query
+            search_query = request.rel_url.query.get('search', '')
+            limit = int(request.rel_url.query.get('limit', '50'))
+            
+            # Retrieve memories
+            if search_query:
+                memories = await self.claude_interface.memory_manager.retrieve_memories(
+                    f"{search_query} user:{user_id}",
+                    k=limit
+                )
+            else:
+                # Get all user memories
+                memories = await self.claude_interface.memory_manager.retrieve_memories(
+                    f"user:{user_id}",
+                    k=limit
+                )
+            
+            # Format memories for response
+            memory_list = []
+            for mem in memories:
+                memory_data = {
+                    'id': str(mem.id),
+                    'content': mem.content,
+                    'timestamp': mem.timestamp.isoformat(),
+                    'importance': mem.importance,
+                    'type': 'episodic'
+                }
+                
+                # Add emotional context if available
+                if hasattr(mem, 'emotional_state') and mem.emotional_state:
+                    memory_data['emotional_context'] = mem.emotional_state
+                
+                memory_list.append(memory_data)
+            
+            return web.json_response(memory_list)
+            
+        except Exception as e:
+            logger.error(f"Error getting memories: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    
+    async def get_memory_detail_handler(self, request):
+        """Get detailed information about a specific memory"""
+        try:
+            memory_id = request.match_info['memory_id']
+            
+            # Try to get from episodic memory store first
+            async with self.claude_interface.memory_manager.episodic_store.Session() as session:
+                from sqlalchemy import select
+                from src.core.memory_manager import EpisodicMemory
+                
+                query = select(EpisodicMemory).where(EpisodicMemory.id == memory_id)
+                result = await session.execute(query)
+                memory = result.scalar_one_or_none()
+                
+                if memory:
+                    # Get related memories
+                    related = []
+                    if memory.embedding:
+                        similar_memories = await self.claude_interface.memory_manager.episodic_store.search_similar_episodes(
+                            memory.embedding,
+                            limit=5
+                        )
+                        related = [
+                            {
+                                'id': str(m.id),
+                                'content': m.content[:100] + '...' if len(m.content) > 100 else m.content,
+                                'importance': m.importance,
+                                'timestamp': m.timestamp.isoformat()
+                            }
+                            for m in similar_memories if str(m.id) != memory_id
+                        ]
+                    
+                    return web.json_response({
+                        'id': str(memory.id),
+                        'content': memory.content,
+                        'timestamp': memory.timestamp.isoformat(),
+                        'importance': memory.importance,
+                        'attention_focus': memory.attention_focus,
+                        'emotional_state': memory.emotional_state,
+                        'context': memory.context,
+                        'metadata': memory.metadata,
+                        'salience_score': memory.salience_score,
+                        'session_id': memory.session_id,
+                        'user_id': memory.user_id,
+                        'related_memories': related,
+                        'memory_type': 'episodic'
+                    })
+            
+            # Try semantic memory
+            semantic_results = await self.claude_interface.memory_manager.semantic_store.semantic_search(
+                query_text=memory_id,
+                top_k=1
+            )
+            
+            if semantic_results:
+                memory = semantic_results[0]
+                return web.json_response({
+                    'id': memory_id,
+                    'content': memory['content'],
+                    'metadata': memory['metadata'],
+                    'score': memory['score'],
+                    'memory_type': 'semantic',
+                    'category': memory['metadata'].get('category', 'general'),
+                    'confidence': memory['metadata'].get('confidence', 1.0),
+                    'consolidated_from': json.loads(memory['metadata'].get('consolidated_from', '[]'))
+                })
+            
+            return web.json_response({'error': 'Memory not found'}, status=404)
+            
+        except Exception as e:
+            logger.error(f"Error getting memory detail: {e}")
+            return web.json_response({'error': str(e)}, status=500)
     
     async def save_state_handler(self, request):
         """Save current system state"""
