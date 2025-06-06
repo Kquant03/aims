@@ -1,31 +1,31 @@
 {
   "name": "aims-ui",
   "version": "1.0.0",
+  "description": "AIMS Consciousness System UI",
   "scripts": {
-    "dev": "webpack serve --mode development",
     "build": "webpack --mode production",
+    "dev": "webpack serve --mode development",
     "watch": "webpack --watch --mode development"
   },
   "dependencies": {
+    "@react-three/drei": "^9.88.2",
+    "@react-three/fiber": "^8.14.5",
+    "axios": "^1.5.1",
+    "d3": "^7.8.5",
+    "framer-motion": "^10.16.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@react-three/fiber": "^8.13.0",
-    "@react-three/drei": "^9.68.0",
-    "three": "^0.152.0",
-    "d3": "^7.8.4",
-    "framer-motion": "^10.12.4",
-    "zustand": "^4.3.8",
-    "axios": "^1.4.0",
-    "recharts": "^2.5.0"
+    "three": "^0.160.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.21.8",
-    "@babel/preset-react": "^7.18.6",
-    "babel-loader": "^9.1.2",
-    "css-loader": "^6.7.3",
-    "style-loader": "^3.3.2",
-    "webpack": "^5.82.1",
-    "webpack-cli": "^5.1.1",
-    "webpack-dev-server": "^4.15.0"
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "@babel/preset-react": "^7.22.15",
+    "babel-loader": "^9.1.3",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
   }
 }

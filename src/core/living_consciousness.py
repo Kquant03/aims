@@ -1,3 +1,4 @@
+from .consciousness_core import ConsciousnessCore, ConsciousnessState
 # src/core/living_consciousness.py
 import json
 import hashlib

@@ -1,17 +1,30 @@
-"""Simple Web Interface for AIMS"""
+"""Web Interface for AIMS with WebSocket support"""
 import os
 import aiohttp
 from aiohttp import web
 import aiohttp_cors
 import logging
+from ..api.websocket_server import ConsciousnessWebSocketServer
 
 logger = logging.getLogger(__name__)
 
 class AIMSWebInterface:
-    """Minimal web interface"""
+    """Web interface with WebSocket server"""
     
-    def __init__(self):
+    def __init__(self, claude_interface=None):
         self.app = web.Application()
+        self.claude_interface = claude_interface
+        
+        # Initialize WebSocket server
+        if claude_interface:
+            self.ws_server = ConsciousnessWebSocketServer(
+                claude_interface, 
+                host='localhost', 
+                port=8765
+            )
+        else:
+            self.ws_server = None
+            
         self.setup_routes()
         self.setup_cors()
     
@@ -19,6 +32,7 @@ class AIMSWebInterface:
         """Setup web routes"""
         self.app.router.add_get('/', self.index)
         self.app.router.add_get('/api/status', self.status)
+        self.app.router.add_get('/api/session', self.get_session)
         self.app.router.add_static('/', path='src/ui/static', name='static')
     
     def setup_cors(self):
@@ -37,50 +51,55 @@ class AIMSWebInterface:
     
     async def index(self, request):
         """Serve index page"""
-        html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>AIMS Interface</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                .status { padding: 20px; background: #f0f0f0; border-radius: 8px; }
-                .online { color: green; }
-                .offline { color: red; }
-            </style>
-        </head>
-        <body>
-            <h1>AIMS - Autonomous Intelligent Memory System</h1>
-            <div class="status">
-                <h2>System Status</h2>
-                <p>Status: <span class="online">● Online</span></p>
-                <p>API Key: <span class="online">✓ Configured</span></p>
-                <p>Services:</p>
-                <ul>
-                    <li>Web Interface: <span class="online">● Running</span></li>
-                    <li>WebSocket: <span class="offline">○ Not Started</span></li>
-                    <li>Claude API: <span class="online">✓ Ready</span></li>
-                </ul>
-            </div>
-            <p>This is a minimal interface. Full UI coming soon!</p>
-        </body>
-        </html>
-        """
-        return web.Response(text=html, content_type='text/html')
+        html_path = os.path.join(os.path.dirname(__file__), 'templates', 'index.html')
+        if os.path.exists(html_path):
+            with open(html_path, 'r') as f:
+                return web.Response(text=f.read(), content_type='text/html')
+        else:
+            # Fallback HTML
+            return web.Response(text='''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>AIMS - Autonomous Intelligent Memory System</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="stylesheet" href="/css/main.css">
+            </head>
+            <body>
+                <div id="root"></div>
+                <script src="/js/bundle.js"></script>
+            </body>
+            </html>
+            ''', content_type='text/html')
     
     async def status(self, request):
-        """API status endpoint"""
-        return web.json_response({
-            'status': 'online',
-            'version': '1.0.0',
-            'api_key_set': bool(os.environ.get('ANTHROPIC_API_KEY'))
-        })
+        """Get system status"""
+        status = {
+            'online': True,
+            'websocket_url': 'ws://localhost:8765',
+            'version': '1.0.0'
+        }
+        
+        if self.claude_interface:
+            status['consciousness'] = {
+                'coherence': self.claude_interface.consciousness.state.global_coherence,
+                'interaction_count': self.claude_interface.consciousness.state.interaction_count
+            }
+        
+        return web.json_response(status)
     
-    def run(self, host='0.0.0.0', port=8000):
-        """Run the web server"""
-        web.run_app(self.app, host=host, port=port)
-
-# Allow running directly
-if __name__ == "__main__":
-    interface = AIMSWebInterface()
-    interface.run()
+    async def get_session(self, request):
+        """Get or create session"""
+        session_id = request.cookies.get('session_id', f'session_{os.urandom(8).hex()}')
+        response = web.json_response({'session_id': session_id})
+        response.set_cookie('session_id', session_id, max_age=86400)  # 24 hours
+        return response
+    
+    async def start(self, host='localhost', port=8000):
+        """Start web server"""
+        runner = web.AppRunner(self.app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+        logger.info(f"Web interface started on http://{host}:{port}")

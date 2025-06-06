@@ -1,18 +1,19 @@
-# claude_interface.py - Complete Enhanced Version with All Integrations (FIXED)
+# claude_interface.py - Complete Enhanced Version with All Integrations (FINAL FIXED)
 import asyncio
 import json
 import os
-from typing import Dict, List, Optional, Any, AsyncGenerator
+from typing import Dict, List, Optional, Any, AsyncGenerator, Union, cast
 from datetime import datetime
 import anthropic
 from anthropic import AsyncAnthropic
+from anthropic.types import MessageParam
 import hashlib
 import logging
 from dataclasses import dataclass
 import numpy as np
 
 # Fixed imports
-from src.core.consciousness_state import ConsciousnessCore, ConsciousnessState
+from ..core.consciousness_core import ConsciousnessCore, ConsciousnessState
 from src.core.memory_manager import ThreeTierMemorySystem, EpisodicMemory
 from src.core.personality import PersonalityEngine
 from src.core.emotional_engine import EmotionalEngine
@@ -158,7 +159,8 @@ Respond naturally while letting these states influence but not dominate your res
             self.emotions.current_state = user_state.get('emotional_state', self.emotions.current_state)
         
         # Get recent memories for this user
-        recent_memories = await self.memory_system.episodic_store.get_user_memories(
+        recent_memories = await self.memory_system.episodic_store.search_similar_episodes(
+            query_embedding=None,
             user_id=user_id,
             limit=5
         )
@@ -171,7 +173,7 @@ Respond naturally while letting these states influence but not dominate your res
             recent_memories=[{
                 'content': mem.content,
                 'timestamp': mem.timestamp.isoformat(),
-                'importance': mem.importance
+                'importance': self._extract_importance_value(mem)
             } for mem in recent_memories],
             personality_modifiers=self.personality.get_behavioral_modifiers(),
             emotional_context={
@@ -198,6 +200,15 @@ Respond naturally while letting these states influence but not dominate your res
         
         logger.info(f"Initialized session {session_id} for user {user_id}")
         return context
+    
+    def _extract_importance_value(self, memory: EpisodicMemory) -> float:
+        """Safely extract importance value from memory"""
+        if hasattr(memory, 'importance'):
+            if hasattr(memory.importance, '__float__'):
+                return float(memory.importance)
+            else:
+                return float(memory.importance) if memory.importance is not None else 0.5
+        return 0.5
     
     async def _monitored_consciousness_loop(self):
         """Consciousness loop that broadcasts state changes"""
@@ -380,7 +391,7 @@ Respond naturally while letting these states influence but not dominate your res
         context.recent_memories = [{
             'content': mem.content,
             'timestamp': mem.timestamp.isoformat(),
-            'importance': mem.importance
+            'importance': self._extract_importance_value(mem)
         } for mem in recent_memories]
         
         # Build Claude API request with consciousness context
@@ -408,7 +419,7 @@ Respond naturally while letting these states influence but not dominate your res
             if stream:
                 response = await self.client.messages.create(
                     model=self.config.get('api', {}).get('model', 'claude-3-sonnet-20240229'),
-                    messages=messages,
+                    messages=cast(List[MessageParam], messages),
                     system=system_prompt,
                     max_tokens=self.config.get('api', {}).get('max_tokens', 4096),
                     temperature=temperature,
@@ -418,25 +429,42 @@ Respond naturally while letting these states influence but not dominate your res
                 async for chunk in response:
                     if hasattr(chunk, 'type'):
                         if chunk.type == 'content_block_delta' and hasattr(chunk, 'delta'):
-                            text = chunk.delta.text
-                            response_text += text
-                            
-                            # Apply real-time emotional modulation if high intensity
-                            if self.emotions.get_emotional_intensity() > 0.7:
-                                text = self._apply_emotional_modulation(text)
-                            
-                            yield text
+                            if hasattr(chunk.delta, 'text'):
+                                text = chunk.delta.text
+                                response_text += text
+                                
+                                # Apply real-time emotional modulation if high intensity
+                                if self.emotions.get_emotional_intensity() > 0.7:
+                                    text = self._apply_emotional_modulation(text)
+                                
+                                yield text
             else:
                 # Non-streaming response
                 response = await self.client.messages.create(
                     model=self.config.get('api', {}).get('model', 'claude-3-sonnet-20240229'),
-                    messages=messages,
+                    messages=cast(List[MessageParam], messages),
                     system=system_prompt,
                     max_tokens=self.config.get('api', {}).get('max_tokens', 4096),
                     temperature=temperature
                 )
                 
-                response_text = response.content[0].text
+                # Handle response content safely
+                if response.content and len(response.content) > 0:
+                    content_block = response.content[0]
+                    # Extract text content
+                    if hasattr(content_block, 'text'):
+                        response_text = content_block.text
+                    elif hasattr(content_block, 'type'):
+                        if content_block.type == 'text' and hasattr(content_block, 'text'):
+                            response_text = content_block.text
+                        else:
+                            # Fallback for other content types
+                            response_text = str(content_block)
+                    else:
+                        response_text = str(content_block)
+                else:
+                    response_text = ""
+                    
                 yield response_text
                         
         except Exception as e:
@@ -515,9 +543,9 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def _post_process_response(self, session_id: str, user_message: str,
                                    assistant_response: str, relevant_memories: List[str],
-                                   attention_result: Dict[str, Any] = None, 
+                                   attention_result: Optional[Dict[str, Any]] = None, 
                                    thinking_content: Optional[str] = None,
-                                   executed_actions: List = None):
+                                   executed_actions: Optional[List] = None):
         """Post-process response and update all systems"""
         # Store assistant response
         metadata = {
@@ -594,8 +622,8 @@ Respond naturally while letting these states influence but not dominate your res
     
     def _calculate_interaction_importance(self, user_message: str, 
                                         assistant_response: str,
-                                        attention_result: Dict[str, Any] = None,
-                                        executed_actions: List = None) -> float:
+                                        attention_result: Optional[Dict[str, Any]] = None,
+                                        executed_actions: Optional[List] = None) -> float:
         """Calculate importance considering consciousness state and attention"""
         importance = 0.3  # Base importance
         
@@ -728,7 +756,8 @@ Respond naturally while letting these states influence but not dominate your res
     async def _get_memory_stats(self, user_id: str) -> Dict[str, Any]:
         """Get detailed memory statistics"""
         # Get episodic memories
-        episodic_memories = await self.memory_system.episodic_store.get_user_memories(
+        episodic_memories = await self.memory_system.episodic_store.search_similar_episodes(
+            query_embedding=None,
             user_id=user_id,
             limit=100
         )
@@ -739,15 +768,20 @@ Respond naturally while letting these states influence but not dominate your res
             top_k=100
         )
         
+        # Extract importance values properly (handle SQLAlchemy columns)
+        importance_values = []
+        for m in episodic_memories:
+            importance_values.append(self._extract_importance_value(m))
+        
         # Calculate statistics
         stats = {
             'episodic': {
                 'total_count': len(episodic_memories),
-                'average_importance': np.mean([m.importance for m in episodic_memories]) if episodic_memories else 0,
+                'average_importance': float(np.mean(importance_values)) if importance_values else 0,
                 'memory_distribution': {
-                    'high_importance': sum(1 for m in episodic_memories if m.importance > 0.7),
-                    'medium_importance': sum(1 for m in episodic_memories if 0.3 <= m.importance <= 0.7),
-                    'low_importance': sum(1 for m in episodic_memories if m.importance < 0.3)
+                    'high_importance': sum(1 for v in importance_values if v > 0.7),
+                    'medium_importance': sum(1 for v in importance_values if 0.3 <= v <= 0.7),
+                    'low_importance': sum(1 for v in importance_values if v < 0.3)
                 }
             },
             'semantic': {
@@ -815,27 +849,33 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def _prepare_messages_with_context(self, session_id: str, 
                                            current_message: str,
-                                           relevant_memories: List[EpisodicMemory]) -> List[Dict]:
+                                           relevant_memories: List[EpisodicMemory]) -> List[MessageParam]:
         """Prepare message history with memory context"""
-        messages = []
+        messages: List[MessageParam] = []
         
         # Add some context from memories if highly relevant
         for memory in relevant_memories[:2]:
-            if memory.importance > 0.7 and "User:" in memory.content and "Assistant:" in memory.content:
+            # Check importance (handle SQLAlchemy column)
+            importance_value = self._extract_importance_value(memory)
+            
+            # Check content for conversation pairs
+            content_check = memory.content if isinstance(memory.content, str) else str(memory.content)
+            
+            if importance_value > 0.7 and "User:" in content_check and "Assistant:" in content_check:
                 # Parse the memory content
-                parts = memory.content.split("Assistant:")
+                parts = content_check.split("Assistant:")
                 if len(parts) == 2:
                     user_part = parts[0].replace("User:", "").strip()
                     assistant_part = parts[1].strip()
                     
-                    messages.append({"role": "user", "content": user_part})
-                    messages.append({"role": "assistant", "content": assistant_part})
+                    messages.append(cast(MessageParam, {"role": "user", "content": user_part}))
+                    messages.append(cast(MessageParam, {"role": "assistant", "content": assistant_part}))
         
         # Add current message
-        messages.append({
+        messages.append(cast(MessageParam, {
             "role": "user",
             "content": current_message
-        })
+        }))
         
         return messages
     
@@ -843,7 +883,7 @@ Respond naturally while letting these states influence but not dominate your res
         """Retrieve memories based on query - compatibility method"""
         user_id = filters.get('user_id') if filters else None
         return await self.memory_system.episodic_store.search_similar_episodes(
-            query_embedding=None,  # Would use embeddings in production
+            query_embedding=None,
             user_id=user_id,
             limit=k
         )
@@ -880,12 +920,23 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def get_top_memories(self, user_id: str, limit: int = 10) -> List[EpisodicMemory]:
         """Get top memories for user - compatibility method"""
-        memories = await self.memory_system.episodic_store.get_user_memories(
+        memories = await self.memory_system.episodic_store.search_similar_episodes(
+            query_embedding=None,
             user_id=user_id,
-            limit=limit
+            limit=limit * 2  # Get more to sort by importance
         )
+        
+        # Extract importance values for sorting
+        memory_with_importance = []
+        for m in memories:
+            importance = self._extract_importance_value(m)
+            memory_with_importance.append((m, importance))
+        
         # Sort by importance
-        return sorted(memories, key=lambda m: m.importance, reverse=True)[:limit]
+        sorted_memories = sorted(memory_with_importance, key=lambda x: x[1], reverse=True)
+        
+        # Return just the memories
+        return [m[0] for m in sorted_memories[:limit]]
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get memory statistics - compatibility method"""

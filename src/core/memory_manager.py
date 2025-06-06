@@ -33,7 +33,7 @@ class EpisodicMemory(Base):
     context = Column(JSON)
     embedding = Column(Vector(1536))  # OpenAI ada-002 dimensions
     salience_score = Column(JSON)  # Multi-dimensional scores
-    metadata = Column(JSON)
+    memory_memory_metadata = Column(JSON)
     importance = Column(Float, default=0.5)
     attention_focus = Column(Text)  # What AIMS was focusing on
     emotional_state = Column(JSON)  # PAD values at time of memory
@@ -76,7 +76,7 @@ class ThreeTierMemorySystem:
             
             # Create tables if they don't exist
             async with self.pg_engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+                await conn.run_sync(Base.memory_metadata.create_all)
                 
                 # Create indices for vector search
                 await conn.execute("""
@@ -225,7 +225,7 @@ class EpisodicMemoryStore:
                 embedding=episode_data.get('embedding'),
                 context=episode_data.get('context', {}),
                 salience_score=episode_data.get('salience_score', {}),
-                metadata=episode_data.get('metadata', {}),
+                memory_metadata=episode_data.get('metadata', {}),
                 importance=episode_data.get('importance', 0.5),
                 attention_focus=episode_data.get('attention_focus'),
                 emotional_state=episode_data.get('emotional_state', {})
