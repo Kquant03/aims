@@ -42,7 +42,7 @@ class NaturalLanguageActionInterface:
              self.action_retrieve_similar, "retrieve_similar"),
             
             (r"(?:I|Let me) (?:should |)(?:recall|remember) (?:what I know about |)(.+?)(?:\.|$)", 
-             self.action_recall, "recall"),
+             self.action_retrieve_similar, "recall"),
             
             # Thinking actions
             (r"(?:I'll|Let me) (?:think|reflect) (?:about this |on this |)(?:more |)(?:deeply|carefully)", 

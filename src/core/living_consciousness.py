@@ -457,3 +457,74 @@ class LivingConsciousnessArtifact:
             'memory_growth': len(new.significant_memories) - len(old.significant_memories),
             'interactions': new.interaction_count - old.interaction_count
         }
+# Fix for numpy type compatibility
+def _calculate_changes(self, old: ConsciousnessSnapshot, new: ConsciousnessSnapshot) -> Dict[str, float]:
+    """Calculate the magnitude of changes between snapshots"""
+    changes = {}
+    
+    # Coherence change
+    changes['coherence_delta'] = abs(float(new.coherence) - float(old.coherence))
+    
+    # Emotional shift
+    emotional_distance = float(np.sqrt(
+        (new.emotional_state['pleasure'] - old.emotional_state['pleasure'])**2 +
+        (new.emotional_state['arousal'] - old.emotional_state['arousal'])**2 +
+        (new.emotional_state['dominance'] - old.emotional_state['dominance'])**2
+    ))
+    changes['emotional_shift'] = emotional_distance
+    
+    # Personality evolution
+    personality_changes = []
+    for trait in new.personality_traits:
+        if trait in old.personality_traits:
+            change = abs(new.personality_traits[trait] - old.personality_traits[trait])
+            personality_changes.append(float(change))
+    changes['personality_drift'] = float(sum(personality_changes) / len(personality_changes)) if personality_changes else 0.0
+    
+    # Goal changes
+    old_goals = set(old.active_goals)
+    new_goals = set(new.active_goals)
+    goal_similarity = len(old_goals & new_goals) / max(len(old_goals | new_goals), 1)
+    changes['goal_evolution'] = 1 - goal_similarity
+    
+    # Memory evolution
+    changes['memory_growth'] = len(new.significant_memories) - len(old.significant_memories)
+    changes['interaction_growth'] = new.interaction_count - old.interaction_count
+    
+    return changes
+
+# Fix for numpy type compatibility
+def _calculate_changes(self, old: ConsciousnessSnapshot, new: ConsciousnessSnapshot) -> Dict[str, float]:
+    """Calculate the magnitude of changes between snapshots"""
+    changes = {}
+    
+    # Coherence change
+    changes['coherence_delta'] = abs(float(new.coherence) - float(old.coherence))
+    
+    # Emotional shift
+    emotional_distance = float(np.sqrt(
+        (new.emotional_state['pleasure'] - old.emotional_state['pleasure'])**2 +
+        (new.emotional_state['arousal'] - old.emotional_state['arousal'])**2 +
+        (new.emotional_state['dominance'] - old.emotional_state['dominance'])**2
+    ))
+    changes['emotional_shift'] = emotional_distance
+    
+    # Personality evolution
+    personality_changes = []
+    for trait in new.personality_traits:
+        if trait in old.personality_traits:
+            change = abs(new.personality_traits[trait] - old.personality_traits[trait])
+            personality_changes.append(float(change))
+    changes['personality_drift'] = float(sum(personality_changes) / len(personality_changes)) if personality_changes else 0.0
+    
+    # Goal changes
+    old_goals = set(old.active_goals)
+    new_goals = set(new.active_goals)
+    goal_similarity = len(old_goals & new_goals) / max(len(old_goals | new_goals), 1)
+    changes['goal_evolution'] = 1 - goal_similarity
+    
+    # Memory evolution
+    changes['memory_growth'] = len(new.significant_memories) - len(old.significant_memories)
+    changes['interaction_growth'] = new.interaction_count - old.interaction_count
+    
+    return changes

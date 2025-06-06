@@ -35,8 +35,8 @@ class ThoughtFragment:
     confidence: float
     timestamp: datetime
     parent_id: Optional[str] = None
-    children_ids: List[str] = None
-    metadata: Dict[str, Any] = None
+    children_ids: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
         if self.children_ids is None:

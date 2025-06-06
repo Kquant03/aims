@@ -55,6 +55,7 @@ class ClaudeConsciousnessInterface:
         
         # State update callback for WebSocket
         self.state_update_callback = None
+        self.consciousness_artifact = None  # Will be initialized per user
         
     def set_state_update_callback(self, callback):
         """Set callback for state updates to broadcast via WebSocket"""

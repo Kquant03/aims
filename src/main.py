@@ -119,7 +119,7 @@ class AIMSApplication:
                 
                 print(f"✅ GPU detected: {device_name}")
                 print(f"   Memory: {total_memory:.1f} GB")
-                print(f"   CUDA version: {torch.version.cuda}")
+                print(f"   CUDA version: {torch.version.cuda if hasattr(torch.version, "cuda") else "N/A" if hasattr(torch.version, "cuda") else "N/A"}")
             else:
                 print("ℹ️  No GPU detected - running on CPU (will be slower)")
         except ImportError:
