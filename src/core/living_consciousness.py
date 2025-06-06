@@ -528,3 +528,54 @@ def _calculate_changes(self, old: ConsciousnessSnapshot, new: ConsciousnessSnaps
     changes['interaction_growth'] = new.interaction_count - old.interaction_count
     
     return changes
+
+# Ensure ConsciousnessCore is defined
+if 'ConsciousnessCore' not in globals():
+    class ConsciousnessCore:
+        """Core consciousness functionality"""
+        
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.state = ConsciousnessState()
+            self.memory_buffer = deque(maxlen=config.get('working_memory_size', 10))
+            self.cycle_frequency = 1.0  # Hz
+            
+        def process_input(self, input_text: str, context: Dict[str, Any]):
+            """Process input and update consciousness state"""
+            self.state.interaction_count += 1
+            self.state.last_interaction = datetime.now()
+            self.memory_buffer.append(f"Input: {input_text[:100]}...")
+            
+        def get_state_summary(self) -> Dict[str, Any]:
+            """Get current state summary"""
+            return {
+                'coherence': self.state.global_coherence,
+                'attention': self.state.attention_focus,
+                'emotion': {'label': 'neutral', 'confidence': 0.5},
+                'recent_memories': list(self.memory_buffer)[-5:],
+                'interaction_count': self.state.interaction_count,
+                'goals': self.state.active_goals,
+                'personality': {'openness': 0.8, 'conscientiousness': 0.7}
+            }
+        
+        def _calculate_coherence(self):
+            """Calculate global coherence score"""
+            base_coherence = 0.7
+            memory_factor = min(1.0, len(self.memory_buffer) / 10)
+            self.state.global_coherence = base_coherence * 0.7 + memory_factor * 0.3
+        
+        async def _update_attention(self):
+            """Update attention focus"""
+            pass
+        
+        async def _consolidate_memory(self):
+            """Consolidate working memory"""
+            pass
+        
+        async def _update_emotional_state(self):
+            """Update emotional state"""
+            pass
+        
+        def shutdown(self):
+            """Cleanup on shutdown"""
+            logger.info("Consciousness core shutting down")

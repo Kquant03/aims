@@ -1,4 +1,4 @@
-# three_tier_memory.py - Core Three-Tier Memory Architecture
+# three_tier_memory.py - Core Three-Tier Memory Architecture (FIXED)
 import asyncio
 import redis.asyncio as redis
 import asyncpg
@@ -240,7 +240,7 @@ class EpisodicMemoryStore:
     
     async def search_similar_episodes(
         self, 
-        query_embedding: List[float], 
+        query_embedding: Optional[List[float]] = None, 
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         time_window_hours: Optional[int] = None,

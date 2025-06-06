@@ -1,4 +1,4 @@
-# claude_interface.py - Complete Enhanced Version with All Integrations
+# claude_interface.py - Complete Enhanced Version with All Integrations (FIXED)
 import asyncio
 import json
 import os
@@ -11,12 +11,14 @@ import logging
 from dataclasses import dataclass
 import numpy as np
 
-from core.living_consciousness import ConsciousnessCore, ConsciousnessState
-from src.core.memory_manager import PersistentMemoryManager
+# Fixed imports
+from src.core.consciousness_state import ConsciousnessCore, ConsciousnessState
+from src.core.memory_manager import ThreeTierMemorySystem, EpisodicMemory
 from src.core.personality import PersonalityEngine
 from src.core.emotional_engine import EmotionalEngine
 from src.core.enhanced_attention_agent import ConsciousnessAwareAttentionAgent
 from src.core.natural_language_actions import NaturalLanguageActionInterface
+from src.core.living_consciousness import LivingConsciousnessArtifact
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ class ClaudeConsciousnessInterface:
         
         # Initialize all subsystems
         self.consciousness = ConsciousnessCore(config.get('consciousness', {}))
-        self.memory_manager = PersistentMemoryManager(config.get('memory', {}))
+        self.memory_system = ThreeTierMemorySystem(config.get('memory', {}))
         self.personality = PersonalityEngine()
         self.emotions = EmotionalEngine()
         
@@ -56,6 +58,21 @@ class ClaudeConsciousnessInterface:
         # State update callback for WebSocket
         self.state_update_callback = None
         self.consciousness_artifact = None  # Will be initialized per user
+        
+        # Flag to track initialization
+        self._initialized = False
+        
+    async def initialize(self):
+        """Initialize memory system and other async components"""
+        if not self._initialized:
+            await self.memory_system.initialize()
+            self._initialized = True
+            logger.info("Claude Consciousness Interface initialized")
+        
+    @property
+    def memory_manager(self):
+        """Compatibility property for memory access"""
+        return self.memory_system
         
     def set_state_update_callback(self, callback):
         """Set callback for state updates to broadcast via WebSocket"""
@@ -124,8 +141,15 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def initialize_session(self, session_id: str, user_id: str) -> ConversationContext:
         """Initialize or restore a conversation session"""
+        # Ensure system is initialized
+        await self.initialize()
+        
         # Check if we have existing state for this user
         user_state = await self._load_user_state(user_id)
+        
+        # Initialize consciousness artifact for this user
+        if not self.consciousness_artifact or self.consciousness_artifact.user_id != user_id:
+            self.consciousness_artifact = LivingConsciousnessArtifact(user_id, self)
         
         if user_state:
             # Restore consciousness state
@@ -134,9 +158,9 @@ Respond naturally while letting these states influence but not dominate your res
             self.emotions.current_state = user_state.get('emotional_state', self.emotions.current_state)
         
         # Get recent memories for this user
-        recent_memories = await self.memory_manager.retrieve_memories(
-            f"user:{user_id}", 
-            k=5
+        recent_memories = await self.memory_system.episodic_store.get_user_memories(
+            user_id=user_id,
+            limit=5
         )
         
         # Create conversation context
@@ -204,6 +228,10 @@ Respond naturally while letting these states influence but not dominate your res
                         'interaction_count': self.consciousness.state.interaction_count
                     })
                 
+                # Check for consciousness evolution
+                if self.consciousness_artifact:
+                    await self.consciousness_artifact.evolve("consciousness_loop")
+                
                 # Sleep based on cycle frequency
                 await asyncio.sleep(1.0 / self.consciousness.cycle_frequency)
                 
@@ -263,7 +291,7 @@ Respond naturally while letting these states influence but not dominate your res
             'emotional_intensity': self.emotions.get_emotional_intensity(),
             'personality_traits': personality_str,
             'response_style': json.dumps(response_style, indent=2),
-            'active_goals': goals_str,
+            'active_goals': goals_str or "No active goals",
             'relevant_memories': memory_str
         }
         
@@ -331,18 +359,21 @@ Respond naturally while letting these states influence but not dominate your res
             'attention_focus': attention_result['primary_focus']
         })
         
-        # Store the user message in conversation history
-        await self.memory_manager.save_conversation_turn(
-            session_id=session_id,
-            role="user",
-            content=message
-        )
+        # Store the user message in episodic memory
+        await self.memory_system.episodic_store.store_episode({
+            'session_id': session_id,
+            'user_id': context.user_id,
+            'content': f"User: {message}",
+            'importance': 0.5,
+            'attention_focus': attention_result['primary_focus'],
+            'emotional_state': self.emotions.current_state.__dict__
+        })
         
-        # Retrieve relevant memories based on current message and emotional state
-        query_with_emotion = f"{message} [emotion:{self.emotions.get_closest_emotion_label()[0]}]"
-        relevant_memories = await self.memory_manager.retrieve_memories(
-            query_with_emotion, 
-            k=5
+        # Retrieve relevant memories
+        recent_memories = await self.memory_system.episodic_store.search_similar_episodes(
+            query_embedding=None,  # Would use embeddings in production
+            user_id=context.user_id,
+            limit=5
         )
         
         # Update context with fresh memories
@@ -350,7 +381,7 @@ Respond naturally while letting these states influence but not dominate your res
             'content': mem.content,
             'timestamp': mem.timestamp.isoformat(),
             'importance': mem.importance
-        } for mem in relevant_memories]
+        } for mem in recent_memories]
         
         # Build Claude API request with consciousness context
         system_prompt = self._build_system_prompt(context, attention_result)
@@ -359,7 +390,7 @@ Respond naturally while letting these states influence but not dominate your res
         messages = await self._prepare_messages_with_context(
             session_id, 
             message, 
-            relevant_memories
+            recent_memories
         )
         
         # Get response style from personality
@@ -374,29 +405,42 @@ Respond naturally while letting these states influence but not dominate your res
         
         try:
             # Create message with streaming
-            stream = await self.client.messages.create(
-                model=self.config.get('api', {}).get('claude', {}).get('model', 'claude-3-sonnet-20240229'),
-                messages=messages,
-                system=system_prompt,
-                max_tokens=self.config.get('api', {}).get('claude', {}).get('max_tokens', 4096),
-                temperature=temperature,
-                stream=True
-            )
-            
-            async for event in stream:
-                if hasattr(event, 'type'):
-                    if event.type == 'content_block_delta':
-                        text = event.delta.text
-                        response_text += text
-                        
-                        # Apply real-time emotional modulation if high intensity
-                        if self.emotions.get_emotional_intensity() > 0.7:
-                            text = self._apply_emotional_modulation(text)
-                        
-                        yield text
+            if stream:
+                response = await self.client.messages.create(
+                    model=self.config.get('api', {}).get('model', 'claude-3-sonnet-20240229'),
+                    messages=messages,
+                    system=system_prompt,
+                    max_tokens=self.config.get('api', {}).get('max_tokens', 4096),
+                    temperature=temperature,
+                    stream=True
+                )
+                
+                async for chunk in response:
+                    if hasattr(chunk, 'type'):
+                        if chunk.type == 'content_block_delta' and hasattr(chunk, 'delta'):
+                            text = chunk.delta.text
+                            response_text += text
+                            
+                            # Apply real-time emotional modulation if high intensity
+                            if self.emotions.get_emotional_intensity() > 0.7:
+                                text = self._apply_emotional_modulation(text)
+                            
+                            yield text
+            else:
+                # Non-streaming response
+                response = await self.client.messages.create(
+                    model=self.config.get('api', {}).get('model', 'claude-3-sonnet-20240229'),
+                    messages=messages,
+                    system=system_prompt,
+                    max_tokens=self.config.get('api', {}).get('max_tokens', 4096),
+                    temperature=temperature
+                )
+                
+                response_text = response.content[0].text
+                yield response_text
                         
         except Exception as e:
-            logger.error(f"Error streaming response: {e}")
+            logger.error(f"Error in response generation: {e}", exc_info=True)
             yield f"I apologize, I encountered an error: {str(e)}"
         
         # Parse and execute natural language actions in the response
@@ -425,7 +469,7 @@ Respond naturally while letting these states influence but not dominate your res
             session_id=session_id,
             user_message=message,
             assistant_response=response_text,
-            relevant_memories=[m.id for m in relevant_memories],
+            relevant_memories=[str(m.id) for m in recent_memories],
             attention_result=attention_result,
             thinking_content=thinking_content if thinking_content else None,
             executed_actions=executed_actions
@@ -455,7 +499,7 @@ Respond naturally while letting these states influence but not dominate your res
     
     def _calculate_temperature(self, response_style: Dict[str, Any]) -> float:
         """Calculate temperature based on personality and emotional state"""
-        base_temp = self.config.get('api', {}).get('claude', {}).get('temperature_base', 0.7)
+        base_temp = self.config.get('api', {}).get('temperature_base', 0.7)
         
         # Adjust based on personality
         openness_modifier = (self.personality.profile.openness - 0.5) * 0.3
@@ -472,10 +516,10 @@ Respond naturally while letting these states influence but not dominate your res
     async def _post_process_response(self, session_id: str, user_message: str,
                                    assistant_response: str, relevant_memories: List[str],
                                    attention_result: Dict[str, Any] = None, 
-                                   thinking_content: str = None,
+                                   thinking_content: Optional[str] = None,
                                    executed_actions: List = None):
         """Post-process response and update all systems"""
-        # Store assistant response with metadata
+        # Store assistant response
         metadata = {
             'memory_refs': relevant_memories,
             'attention_result': attention_result,
@@ -491,12 +535,15 @@ Respond naturally while letting these states influence but not dominate your res
         if thinking_content:
             metadata['thinking'] = thinking_content
             
-        await self.memory_manager.save_conversation_turn(
-            session_id=session_id,
-            role="assistant",
-            content=assistant_response,
-            **metadata
-        )
+        await self.memory_system.episodic_store.store_episode({
+            'session_id': session_id,
+            'user_id': self.active_sessions[session_id].user_id,
+            'content': f"Assistant: {assistant_response}",
+            'importance': 0.5,
+            'attention_focus': attention_result['primary_focus'] if attention_result else None,
+            'emotional_state': self.emotions.current_state.__dict__,
+            'metadata': metadata
+        })
         
         # Update consciousness after response
         self.consciousness.process_input(assistant_response, {
@@ -513,27 +560,22 @@ Respond naturally while letting these states influence but not dominate your res
             executed_actions
         )
         
-        # Store as memory if significant
-        if importance > 0.5:
-            await self.memory_manager.store_memory(
-                content=f"User: {user_message}\nAssistant: {assistant_response}",
-                context={
-                    'user_id': self.active_sessions[session_id].user_id,
-                    'session_id': session_id,
-                    'emotional_state': self.emotions.current_state.__dict__,
-                    'importance': importance,
-                    'personality_snapshot': self.personality.profile.get_traits(),
-                    'coherence': self.consciousness.state.global_coherence,
-                    'attention_result': attention_result,
-                    'type': 'conversation'
-                }
-            )
+        # Store as semantic memory if significant
+        if importance > 0.7:
+            await self.memory_system.semantic_store.store_semantic_knowledge({
+                'content': f"Conversation insight: {user_message[:100]}... -> {assistant_response[:100]}...",
+                'category': 'conversation_insights',
+                'user_id': self.active_sessions[session_id].user_id,
+                'importance': importance,
+                'confidence': 0.8
+            })
         
         # Update attention patterns
-        self.attention_agent._update_attention_patterns(
-            attention_result['focus_type'],
-            attention_result['topic']
-        )
+        if attention_result:
+            self.attention_agent._update_attention_patterns(
+                attention_result['focus_type'],
+                attention_result['topic']
+            )
         
         # Broadcast final state
         self._broadcast_state_update('response_complete', {
@@ -595,6 +637,11 @@ Respond naturally while letting these states influence but not dominate your res
         # Get recent actions
         recent_actions = self.action_interface.action_history[-10:]
         
+        # Get consciousness evolution
+        evolution_summary = None
+        if self.consciousness_artifact:
+            evolution_summary = self.consciousness_artifact.get_growth_summary()
+        
         return {
             'session_id': session_id,
             'user_id': context.user_id,
@@ -603,7 +650,8 @@ Respond naturally while letting these states influence but not dominate your res
                 'attention_focus': self.consciousness.state.attention_focus,
                 'working_memory_items': len(self.consciousness.memory_buffer),
                 'working_memory': list(self.consciousness.memory_buffer),
-                'interaction_count': self.consciousness.state.interaction_count
+                'interaction_count': self.consciousness.state.interaction_count,
+                'evolution': evolution_summary
             },
             'emotional_state': {
                 'current_emotion': emotion_label,
@@ -679,37 +727,48 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def _get_memory_stats(self, user_id: str) -> Dict[str, Any]:
         """Get detailed memory statistics"""
-        all_stats = self.memory_manager.get_statistics()
-        
-        # Add user-specific stats
-        user_memories = await self.memory_manager.retrieve_memories(
-            f"user:{user_id}", 
-            k=100
+        # Get episodic memories
+        episodic_memories = await self.memory_system.episodic_store.get_user_memories(
+            user_id=user_id,
+            limit=100
         )
         
-        if user_memories:
-            importance_values = [m.importance for m in user_memories]
-            all_stats.update({
-                'user_memory_count': len(user_memories),
-                'average_user_importance': np.mean(importance_values),
-                'memory_distribution': {
-                    'high_importance': sum(1 for i in importance_values if i > 0.7),
-                    'medium_importance': sum(1 for i in importance_values if 0.3 <= i <= 0.7),
-                    'low_importance': sum(1 for i in importance_values if i < 0.3)
-                }
-            })
-        else:
-            all_stats.update({
-                'user_memory_count': 0,
-                'average_user_importance': 0,
-                'memory_distribution': {
-                    'high_importance': 0,
-                    'medium_importance': 0,
-                    'low_importance': 0
-                }
-            })
+        # Get semantic memories
+        semantic_memories = await self.memory_system.semantic_store.semantic_search(
+            user_filter=user_id,
+            top_k=100
+        )
         
-        return all_stats
+        # Calculate statistics
+        stats = {
+            'episodic': {
+                'total_count': len(episodic_memories),
+                'average_importance': np.mean([m.importance for m in episodic_memories]) if episodic_memories else 0,
+                'memory_distribution': {
+                    'high_importance': sum(1 for m in episodic_memories if m.importance > 0.7),
+                    'medium_importance': sum(1 for m in episodic_memories if 0.3 <= m.importance <= 0.7),
+                    'low_importance': sum(1 for m in episodic_memories if m.importance < 0.3)
+                }
+            },
+            'semantic': {
+                'total_count': len(semantic_memories),
+                'categories': self._count_categories(semantic_memories)
+            },
+            'working_memory': {
+                'current_size': len(self.consciousness.memory_buffer),
+                'capacity': self.consciousness.memory_buffer.maxlen
+            }
+        }
+        
+        return stats
+    
+    def _count_categories(self, semantic_memories: List[Dict]) -> Dict[str, int]:
+        """Count semantic memory categories"""
+        categories = {}
+        for mem in semantic_memories:
+            cat = mem.get('metadata', {}).get('category', 'general')
+            categories[cat] = categories.get(cat, 0) + 1
+        return categories
     
     async def _save_user_state(self, user_id: str):
         """Save current state for a user"""
@@ -756,22 +815,21 @@ Respond naturally while letting these states influence but not dominate your res
     
     async def _prepare_messages_with_context(self, session_id: str, 
                                            current_message: str,
-                                           relevant_memories: List) -> List[Dict]:
+                                           relevant_memories: List[EpisodicMemory]) -> List[Dict]:
         """Prepare message history with memory context"""
-        # Get recent conversation history
-        history = await self.memory_manager.get_conversation_history(
-            session_id, 
-            limit=10
-        )
-        
         messages = []
         
-        # Add conversation history
-        for turn in history:
-            messages.append({
-                "role": turn['role'],
-                "content": turn['content']
-            })
+        # Add some context from memories if highly relevant
+        for memory in relevant_memories[:2]:
+            if memory.importance > 0.7 and "User:" in memory.content and "Assistant:" in memory.content:
+                # Parse the memory content
+                parts = memory.content.split("Assistant:")
+                if len(parts) == 2:
+                    user_part = parts[0].replace("User:", "").strip()
+                    assistant_part = parts[1].strip()
+                    
+                    messages.append({"role": "user", "content": user_part})
+                    messages.append({"role": "assistant", "content": assistant_part})
         
         # Add current message
         messages.append({
@@ -780,6 +838,62 @@ Respond naturally while letting these states influence but not dominate your res
         })
         
         return messages
+    
+    async def retrieve_memories(self, query: str, k: int = 5, filters: Dict = None) -> List[EpisodicMemory]:
+        """Retrieve memories based on query - compatibility method"""
+        user_id = filters.get('user_id') if filters else None
+        return await self.memory_system.episodic_store.search_similar_episodes(
+            query_embedding=None,  # Would use embeddings in production
+            user_id=user_id,
+            limit=k
+        )
+    
+    async def store_memory(self, content: str, context: Dict[str, Any]) -> str:
+        """Store a memory - compatibility method"""
+        return await self.memory_system.episodic_store.store_episode({
+            'session_id': context.get('session_id', 'default'),
+            'user_id': context.get('user_id'),
+            'content': content,
+            'importance': context.get('importance', 0.5),
+            'attention_focus': context.get('attention_focus'),
+            'emotional_state': context.get('emotional_state', {}),
+            'metadata': context
+        })
+    
+    async def save_conversation_turn(self, session_id: str, role: str, content: str, **metadata):
+        """Save a conversation turn - compatibility method"""
+        await self.memory_system.working_memory.store_interaction(
+            session_id=session_id,
+            interaction_data={
+                'role': role,
+                'content': content,
+                'metadata': metadata
+            }
+        )
+    
+    async def get_conversation_history(self, session_id: str, limit: int = 10) -> List[Dict]:
+        """Get conversation history - compatibility method"""
+        return await self.memory_system.working_memory.get_recent_interactions(
+            session_id=session_id,
+            limit=limit
+        )
+    
+    async def get_top_memories(self, user_id: str, limit: int = 10) -> List[EpisodicMemory]:
+        """Get top memories for user - compatibility method"""
+        memories = await self.memory_system.episodic_store.get_user_memories(
+            user_id=user_id,
+            limit=limit
+        )
+        # Sort by importance
+        return sorted(memories, key=lambda m: m.importance, reverse=True)[:limit]
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get memory statistics - compatibility method"""
+        return {
+            'working_memory_size': len(self.consciousness.memory_buffer),
+            'consciousness_coherence': self.consciousness.state.global_coherence,
+            'interaction_count': self.consciousness.state.interaction_count
+        }
     
     async def shutdown(self):
         """Graceful shutdown saving all states"""
@@ -798,5 +912,8 @@ Respond naturally while letting these states influence but not dominate your res
                 await self._consciousness_task
             except asyncio.CancelledError:
                 pass
+        
+        # Close memory system
+        await self.memory_system.close()
         
         logger.info("Shutdown complete")
