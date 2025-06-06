@@ -1,16 +1,16 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { motion } from 'framer-motion';
-import './MemoryGraph.css';
 
-const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) => {
-  const svgRef = useRef();
-  const containerRef = useRef();
+const MemoryGraph = ({ memories, links, onMemorySelect, selectedId }) => {
+  const svgRef = useRef(null);
+  const containerRef = useRef(null);
+  const simulationRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredMemory, setHoveredMemory] = useState(null);
-  const simulationRef = useRef(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
   
-  // Handle resize
+  // Handle container resize
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
@@ -24,17 +24,16 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   
+  // Draw the graph
   useEffect(() => {
-    if (!memories.length || !svgRef.current) return;
+    if (!memories || memories.length === 0 || !svgRef.current) return;
     
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
     
     const { width, height } = dimensions;
-    const centerX = width / 2;
-    const centerY = height / 2;
     
-    // Create container for zoom/pan
+    // Create main group for zoom/pan
     const g = svg.append('g');
     
     // Add zoom behavior
@@ -42,60 +41,79 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
       .scaleExtent([0.1, 10])
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
+        setZoomLevel(event.transform.k);
       });
     
     svg.call(zoom);
     
-    // Color scale based on memory importance
-    const colorScale = d3.scaleSequential(d3.interpolateViridis)
-      .domain([0, 1]);
-    
-    // Create force simulation
-    const simulation = d3.forceSimulation(memories)
-      .force('link', d3.forceLink(links)
-        .id(d => d.id)
-        .distance(d => 100 * (1 - d.value))
-        .strength(d => d.value))
-      .force('charge', d3.forceManyBody()
-        .strength(d => -200 * d.importance))
-      .force('center', d3.forceCenter(centerX, centerY))
-      .force('collision', d3.forceCollide()
-        .radius(d => 20 + d.importance * 30));
-    
-    simulationRef.current = simulation;
-    
-    // Create gradient definitions
+    // Add gradient definitions
     const defs = svg.append('defs');
     
-    // Create glow filter
-    const filter = defs.append('filter')
-      .attr('id', 'glow');
+    // Create gradients for different importance levels
+    const importanceGradients = [
+      { id: 'high-importance', color1: '#ff0066', color2: '#ff3388' },
+      { id: 'medium-importance', color1: '#00a8ff', color2: '#33bbff' },
+      { id: 'low-importance', color1: '#00ff88', color2: '#33ff99' }
+    ];
     
-    filter.append('feGaussianBlur')
-      .attr('stdDeviation', '3')
-      .attr('result', 'coloredBlur');
+    importanceGradients.forEach(grad => {
+      const gradient = defs.append('radialGradient')
+        .attr('id', grad.id);
+      
+      gradient.append('stop')
+        .attr('offset', '0%')
+        .attr('stop-color', grad.color1)
+        .attr('stop-opacity', 0.8);
+      
+      gradient.append('stop')
+        .attr('offset', '100%')
+        .attr('stop-color', grad.color2)
+        .attr('stop-opacity', 0.3);
+    });
     
-    const feMerge = filter.append('feMerge');
-    feMerge.append('feMergeNode')
-      .attr('in', 'coloredBlur');
-    feMerge.append('feMergeNode')
-      .attr('in', 'SourceGraphic');
+    // Process data
+    const nodes = memories.map(memory => ({
+      ...memory,
+      x: width / 2 + (Math.random() - 0.5) * 200,
+      y: height / 2 + (Math.random() - 0.5) * 200,
+      r: 5 + memory.importance * 25
+    }));
+    
+    const validLinks = links.filter(link => {
+      const sourceExists = nodes.find(n => n.id === link.source);
+      const targetExists = nodes.find(n => n.id === link.target);
+      return sourceExists && targetExists;
+    });
+    
+    // Create force simulation
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(validLinks)
+        .id(d => d.id)
+        .distance(d => 50 + (1 - d.value) * 50)
+        .strength(d => d.value * 0.5))
+      .force('charge', d3.forceManyBody()
+        .strength(d => -100 - d.importance * 100))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide()
+        .radius(d => d.r + 5));
+    
+    simulationRef.current = simulation;
     
     // Create links
     const link = g.append('g')
       .attr('class', 'links')
       .selectAll('line')
-      .data(links)
+      .data(validLinks)
       .enter().append('line')
       .attr('stroke', '#ffffff')
       .attr('stroke-opacity', d => d.value * 0.3)
-      .attr('stroke-width', d => Math.sqrt(d.value) * 3);
+      .attr('stroke-width', d => Math.sqrt(d.value) * 2);
     
     // Create node groups
     const node = g.append('g')
       .attr('class', 'nodes')
       .selectAll('g')
-      .data(memories)
+      .data(nodes)
       .enter().append('g')
       .attr('class', 'node')
       .call(d3.drag()
@@ -103,52 +121,53 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
         .on('drag', dragged)
         .on('end', dragended));
     
-    // Add circles with glow effect
+    // Add circles
     node.append('circle')
-      .attr('r', d => 10 + d.importance * 20)
-      .attr('fill', d => colorScale(d.importance))
-      .attr('stroke', '#ffffff')
-      .attr('stroke-width', d => selectedId === d.id ? 3 : 1)
-      .attr('filter', d => selectedId === d.id ? 'url(#glow)' : null)
+      .attr('r', d => d.r)
+      .attr('fill', d => {
+        if (d.importance > 0.7) return 'url(#high-importance)';
+        if (d.importance > 0.4) return 'url(#medium-importance)';
+        return 'url(#low-importance)';
+      })
+      .attr('stroke', d => d.id === selectedId ? '#fff' : 'none')
+      .attr('stroke-width', 3)
       .style('cursor', 'pointer')
       .on('click', (event, d) => {
         event.stopPropagation();
         onMemorySelect(d);
       })
-      .on('mouseenter', (event, d) => {
+      .on('mouseover', (event, d) => {
         setHoveredMemory(d);
-        d3.select(event.target)
-          .transition()
-          .duration(200)
-          .attr('r', d => 15 + d.importance * 25);
+        
+        // Highlight connected nodes
+        link.style('stroke-opacity', l => 
+          l.source.id === d.id || l.target.id === d.id ? 0.8 : 0.1
+        );
+        
+        node.style('opacity', n => {
+          if (n.id === d.id) return 1;
+          const connected = validLinks.some(l => 
+            (l.source.id === d.id && l.target.id === n.id) ||
+            (l.target.id === d.id && l.source.id === n.id)
+          );
+          return connected ? 1 : 0.3;
+        });
       })
-      .on('mouseleave', (event, d) => {
+      .on('mouseout', () => {
         setHoveredMemory(null);
-        d3.select(event.target)
-          .transition()
-          .duration(200)
-          .attr('r', d => 10 + d.importance * 20);
+        link.style('stroke-opacity', d => d.value * 0.3);
+        node.style('opacity', 1);
       });
     
-    // Add importance rings
-    node.append('circle')
-      .attr('r', d => 15 + d.importance * 25)
-      .attr('fill', 'none')
-      .attr('stroke', d => colorScale(d.importance))
-      .attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.3)
-      .attr('stroke-dasharray', '3,3');
-    
-    // Add labels for important memories
-    node.filter(d => d.importance > 0.7)
-      .append('text')
-      .text(d => d.content.substring(0, 20) + '...')
-      .attr('x', 0)
-      .attr('y', d => -20 - d.importance * 20)
+    // Add labels (shown on hover or when zoomed in)
+    const labels = node.append('text')
+      .text(d => d.content.substring(0, 30) + '...')
       .attr('text-anchor', 'middle')
-      .attr('fill', '#ffffff')
-      .style('font-size', '10px')
-      .style('pointer-events', 'none');
+      .attr('dy', d => d.r + 15)
+      .style('font-size', '12px')
+      .style('fill', '#e0e0e0')
+      .style('pointer-events', 'none')
+      .style('opacity', 0);
     
     // Update positions on tick
     simulation.on('tick', () => {
@@ -159,6 +178,9 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
         .attr('y2', d => d.target.y);
       
       node.attr('transform', d => `translate(${d.x},${d.y})`);
+      
+      // Show labels when zoomed in
+      labels.style('opacity', zoomLevel > 2 ? 1 : 0);
     });
     
     // Drag functions
@@ -179,28 +201,10 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
       d.fy = null;
     }
     
-    // Add initial animation
-    svg.style('opacity', 0)
-      .transition()
-      .duration(500)
-      .style('opacity', 1);
+    // Add reset zoom button handler
+    svg.on('dblclick.zoom', null);
     
-    // Focus on selected memory
-    if (selectedId) {
-      const selectedMemory = memories.find(m => m.id === selectedId);
-      if (selectedMemory) {
-        const scale = 2;
-        const transform = d3.zoomIdentity
-          .translate(width / 2, height / 2)
-          .scale(scale)
-          .translate(-selectedMemory.x || 0, -selectedMemory.y || 0);
-        
-        svg.transition()
-          .duration(750)
-          .call(zoom.transform, transform);
-      }
-    }
-    
+    // Cleanup
     return () => {
       if (simulationRef.current) {
         simulationRef.current.stop();
@@ -208,75 +212,206 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
     };
   }, [memories, links, dimensions, selectedId, onMemorySelect]);
   
+  const resetView = () => {
+    const svg = d3.select(svgRef.current);
+    svg.transition()
+      .duration(750)
+      .call(
+        d3.zoom().transform,
+        d3.zoomIdentity
+      );
+  };
+  
+  const getImportanceLabel = (importance) => {
+    if (importance > 0.7) return 'Critical';
+    if (importance > 0.4) return 'Important';
+    return 'Standard';
+  };
+  
   return (
-    <div ref={containerRef} className="memory-graph-container">
-      <svg ref={svgRef} width={dimensions.width} height={dimensions.height}>
-        <rect width="100%" height="100%" fill="#0a0a0a" />
-      </svg>
+    <div className="memory-graph" ref={containerRef}>
+      <svg 
+        ref={svgRef} 
+        width={dimensions.width} 
+        height={dimensions.height}
+        className="graph-svg"
+      />
+      
+      <div className="graph-controls">
+        <button onClick={resetView} className="control-button" title="Reset view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 8C2 11.314 4.686 14 8 14C11.314 14 14 11.314 14 8C14 4.686 11.314 2 8 2C5.5 2 3.5 3.5 2.5 5.5M2.5 2V5.5H6" 
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        
+        <div className="zoom-indicator">
+          Zoom: {(zoomLevel * 100).toFixed(0)}%
+        </div>
+      </div>
+      
+      <motion.div 
+        className="graph-legend"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        <h4>Memory Importance</h4>
+        <div className="legend-item">
+          <div className="legend-color high" />
+          <span>Critical (70%+)</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-color medium" />
+          <span>Important (40-70%)</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-color low" />
+          <span>Standard (&lt;40%)</span>
+        </div>
+      </motion.div>
       
       {hoveredMemory && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
+        <motion.div 
           className="memory-tooltip"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           style={{
-            position: 'absolute',
-            left: hoveredMemory.x,
-            top: hoveredMemory.y - 50,
-            transform: 'translate(-50%, -100%)'
+            left: hoveredMemory.x + 20,
+            top: hoveredMemory.y - 20
           }}
         >
-          <div className="tooltip-content">
-            <div className="tooltip-header">
-              <span className="importance-badge" style={{
-                backgroundColor: d3.scaleSequential(d3.interpolateViridis)(hoveredMemory.importance)
-              }}>
-                {(hoveredMemory.importance * 100).toFixed(0)}%
-              </span>
-              <span className="memory-type">{hoveredMemory.type || 'episodic'}</span>
-            </div>
-            <p className="memory-preview">{hoveredMemory.content}</p>
-            <div className="memory-meta">
-              <span>{new Date(hoveredMemory.timestamp).toLocaleDateString()}</span>
-              <span>ID: {hoveredMemory.id}</span>
-            </div>
+          <div className="tooltip-header">
+            <span className="tooltip-type">{hoveredMemory.type || 'Memory'}</span>
+            <span className="tooltip-importance">
+              {getImportanceLabel(hoveredMemory.importance)}
+            </span>
+          </div>
+          <p className="tooltip-content">{hoveredMemory.content}</p>
+          <div className="tooltip-meta">
+            <span>Importance: {(hoveredMemory.importance * 100).toFixed(0)}%</span>
+            <span>{new Date(hoveredMemory.timestamp).toLocaleDateString()}</span>
           </div>
         </motion.div>
       )}
       
-      <div className="graph-controls">
-        <button onClick={() => simulationRef.current?.restart()}>
-          <span className="icon">🔄</span> Reorganize
-        </button>
-        <button onClick={() => {
-          const svg = d3.select(svgRef.current);
-          const zoom = d3.zoom();
-          svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
-        }}>
-          <span className="icon">🎯</span> Reset View
-        </button>
-      </div>
-      
       <style jsx>{`
-        .memory-graph-container {
+        .memory-graph {
           position: relative;
           width: 100%;
-          height: 100%;
+          height: 600px;
           background: #0a0a0a;
-          border-radius: 8px;
+          border-radius: 12px;
           overflow: hidden;
+          border: 1px solid #333;
+        }
+        
+        .graph-svg {
+          cursor: grab;
+        }
+        
+        .graph-svg:active {
+          cursor: grabbing;
+        }
+        
+        .graph-controls {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        
+        .control-button {
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(26, 26, 26, 0.9);
+          border: 1px solid #333;
+          border-radius: 8px;
+          color: #666;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .control-button:hover {
+          background: rgba(37, 37, 37, 0.9);
+          color: #e0e0e0;
+          border-color: #444;
+        }
+        
+        .zoom-indicator {
+          padding: 8px 12px;
+          background: rgba(26, 26, 26, 0.9);
+          border: 1px solid #333;
+          border-radius: 6px;
+          font-size: 12px;
+          color: #888;
+        }
+        
+        .graph-legend {
+          position: absolute;
+          bottom: 20px;
+          left: 20px;
+          padding: 16px;
+          background: rgba(26, 26, 26, 0.9);
+          border: 1px solid #333;
+          border-radius: 8px;
+          backdrop-filter: blur(10px);
+        }
+        
+        .graph-legend h4 {
+          margin: 0 0 12px 0;
+          font-size: 12px;
+          font-weight: 600;
+          color: #888;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+          font-size: 12px;
+          color: #a0a0a0;
+        }
+        
+        .legend-item:last-child {
+          margin-bottom: 0;
+        }
+        
+        .legend-color {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+        }
+        
+        .legend-color.high {
+          background: radial-gradient(circle, #ff0066 0%, #ff3388 100%);
+        }
+        
+        .legend-color.medium {
+          background: radial-gradient(circle, #00a8ff 0%, #33bbff 100%);
+        }
+        
+        .legend-color.low {
+          background: radial-gradient(circle, #00ff88 0%, #33ff99 100%);
         }
         
         .memory-tooltip {
-          background: rgba(26, 26, 26, 0.95);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          padding: 12px;
+          position: absolute;
           max-width: 300px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          z-index: 1000;
+          padding: 12px;
+          background: rgba(26, 26, 26, 0.95);
+          border: 1px solid #333;
+          border-radius: 8px;
+          backdrop-filter: blur(10px);
           pointer-events: none;
+          z-index: 100;
         }
         
         .tooltip-header {
@@ -284,66 +419,42 @@ const MemoryGraph = ({ memories = [], links = [], onMemorySelect, selectedId }) 
           justify-content: space-between;
           align-items: center;
           margin-bottom: 8px;
+          font-size: 12px;
         }
         
-        .importance-badge {
-          padding: 2px 8px;
-          border-radius: 12px;
-          font-size: 11px;
+        .tooltip-type {
+          color: #00a8ff;
           font-weight: 600;
-          color: white;
-        }
-        
-        .memory-type {
-          font-size: 11px;
-          color: #888;
           text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
         
-        .memory-preview {
-          color: #e0e0e0;
+        .tooltip-importance {
+          color: #888;
+          font-weight: 600;
+        }
+        
+        .tooltip-content {
+          margin: 0 0 8px 0;
           font-size: 13px;
-          line-height: 1.4;
-          margin: 8px 0;
+          color: #e0e0e0;
+          line-height: 1.5;
         }
         
-        .memory-meta {
+        .tooltip-meta {
           display: flex;
           justify-content: space-between;
           font-size: 11px;
           color: #666;
         }
         
-        .graph-controls {
-          position: absolute;
-          top: 16px;
-          right: 16px;
-          display: flex;
-          gap: 8px;
+        /* D3 styles */
+        :global(.memory-graph .node) {
+          transition: opacity 0.2s;
         }
         
-        .graph-controls button {
-          background: rgba(26, 26, 26, 0.8);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          padding: 8px 12px;
-          color: #e0e0e0;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-        
-        .graph-controls button:hover {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.2);
-        }
-        
-        .icon {
-          font-size: 16px;
+        :global(.memory-graph .links line) {
+          transition: stroke-opacity 0.2s;
         }
       `}</style>
     </div>

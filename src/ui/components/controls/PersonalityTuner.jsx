@@ -1,658 +1,653 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import './PersonalityTuner.css';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import * as d3 from 'd3';
 
-const PersonalityTuner = ({ currentTraits = {}, onTraitChange, onReset }) => {
-  const [localTraits, setLocalTraits] = useState({
+const PersonalityTuner = ({ currentPersonality, onPersonalityChange }) => {
+  const [personality, setPersonality] = useState({
     openness: 0.8,
     conscientiousness: 0.7,
     extraversion: 0.6,
     agreeableness: 0.8,
     neuroticism: 0.3,
-    ...currentTraits
+    ...currentPersonality
   });
   
-  const [editMode, setEditMode] = useState(false);
-  const [presets, setPresets] = useState([
-    {
-      name: 'Balanced',
-      traits: { openness: 0.7, conscientiousness: 0.7, extraversion: 0.6, agreeableness: 0.7, neuroticism: 0.4 }
-    },
-    {
-      name: 'Creative',
-      traits: { openness: 0.9, conscientiousness: 0.5, extraversion: 0.7, agreeableness: 0.6, neuroticism: 0.5 }
-    },
-    {
-      name: 'Analytical',
-      traits: { openness: 0.6, conscientiousness: 0.9, extraversion: 0.4, agreeableness: 0.6, neuroticism: 0.3 }
-    },
-    {
-      name: 'Social',
-      traits: { openness: 0.7, conscientiousness: 0.6, extraversion: 0.9, agreeableness: 0.8, neuroticism: 0.3 }
-    },
-    {
-      name: 'Empathetic',
-      traits: { openness: 0.8, conscientiousness: 0.7, extraversion: 0.6, agreeableness: 0.95, neuroticism: 0.4 }
-    }
-  ]);
-  
   const [selectedPreset, setSelectedPreset] = useState(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showDescription, setShowDescription] = useState(true);
+  const radarRef = useRef(null);
   
-  // Trait information
-  const traitInfo = {
-    openness: {
+  const traits = [
+    { 
+      key: 'openness', 
       label: 'Openness',
-      description: 'Creativity, curiosity, and openness to new experiences',
-      low: 'Traditional, practical',
-      high: 'Creative, imaginative',
       color: '#00a8ff',
-      icon: '✨'
+      description: 'Curiosity, creativity, and willingness to explore new ideas'
     },
-    conscientiousness: {
+    { 
+      key: 'conscientiousness', 
       label: 'Conscientiousness',
-      description: 'Organization, dependability, and self-discipline',
-      low: 'Flexible, spontaneous',
-      high: 'Organized, reliable',
       color: '#00ff88',
-      icon: '📋'
+      description: 'Organization, thoroughness, and attention to detail'
     },
-    extraversion: {
+    { 
+      key: 'extraversion', 
       label: 'Extraversion',
-      description: 'Sociability, assertiveness, and emotional expression',
-      low: 'Reserved, thoughtful',
-      high: 'Outgoing, energetic',
       color: '#ffaa00',
-      icon: '🗣️'
+      description: 'Sociability, enthusiasm, and engagement with others'
     },
-    agreeableness: {
+    { 
+      key: 'agreeableness', 
       label: 'Agreeableness',
-      description: 'Cooperation, trust, and empathy',
-      low: 'Competitive, skeptical',
-      high: 'Cooperative, trusting',
-      color: '#ff00aa',
-      icon: '❤️'
+      color: '#ff00ff',
+      description: 'Cooperation, trust, and desire for harmony'
     },
-    neuroticism: {
+    { 
+      key: 'neuroticism', 
       label: 'Neuroticism',
-      description: 'Emotional instability, anxiety, and moodiness',
-      low: 'Stable, calm',
-      high: 'Sensitive, reactive',
       color: '#ff0066',
-      icon: '🌊'
+      description: 'Emotional sensitivity and range of reactions'
     }
-  };
+  ];
   
-  // Update local traits when props change
-  useEffect(() => {
-    if (currentTraits) {
-      setLocalTraits(prev => ({ ...prev, ...currentTraits }));
+  const presets = [
+    { 
+      name: 'Balanced', 
+      values: { openness: 0.6, conscientiousness: 0.6, extraversion: 0.6, agreeableness: 0.6, neuroticism: 0.4 },
+      description: 'Well-rounded personality with moderate traits'
+    },
+    { 
+      name: 'Creative', 
+      values: { openness: 0.9, conscientiousness: 0.5, extraversion: 0.7, agreeableness: 0.6, neuroticism: 0.5 },
+      description: 'High creativity and openness to new experiences'
+    },
+    { 
+      name: 'Analytical', 
+      values: { openness: 0.7, conscientiousness: 0.9, extraversion: 0.4, agreeableness: 0.5, neuroticism: 0.3 },
+      description: 'Detail-oriented with strong analytical focus'
+    },
+    { 
+      name: 'Empathetic', 
+      values: { openness: 0.7, conscientiousness: 0.6, extraversion: 0.6, agreeableness: 0.9, neuroticism: 0.6 },
+      description: 'High emotional intelligence and concern for others'
+    },
+    { 
+      name: 'Enthusiastic', 
+      values: { openness: 0.8, conscientiousness: 0.6, extraversion: 0.9, agreeableness: 0.7, neuroticism: 0.4 },
+      description: 'Energetic and socially engaged'
     }
-  }, [currentTraits]);
+  ];
+  
+  // Draw personality radar chart
+  useEffect(() => {
+    if (!radarRef.current) return;
+    
+    const svg = d3.select(radarRef.current);
+    svg.selectAll('*').remove();
+    
+    const width = 300;
+    const height = 300;
+    const margin = 40;
+    const radius = Math.min(width, height) / 2 - margin;
+    
+    const angleSlice = (Math.PI * 2) / traits.length;
+    
+    const g = svg
+      .attr('width', width)
+      .attr('height', height)
+      .append('g')
+      .attr('transform', `translate(${width / 2},${height / 2})`);
+    
+    // Scales
+    const rScale = d3.scaleLinear()
+      .domain([0, 1])
+      .range([0, radius]);
+    
+    // Draw grid
+    const levels = 5;
+    for (let level = 0; level < levels; level++) {
+      const levelFactor = radius * ((level + 1) / levels);
+      
+      g.append('circle')
+        .attr('r', levelFactor)
+        .style('fill', 'none')
+        .style('stroke', '#333')
+        .style('stroke-width', '0.5px');
+      
+      // Add percentage labels
+      if (level === levels - 1) {
+        g.append('text')
+          .attr('x', 5)
+          .attr('y', -levelFactor)
+          .style('font-size', '10px')
+          .style('fill', '#666')
+          .text('100%');
+      }
+    }
+    
+    // Draw axes
+    const axis = g.selectAll('.axis')
+      .data(traits)
+      .enter()
+      .append('g')
+      .attr('class', 'axis');
+    
+    axis.append('line')
+      .attr('x1', 0)
+      .attr('y1', 0)
+      .attr('x2', (d, i) => rScale(1) * Math.cos(angleSlice * i - Math.PI / 2))
+      .attr('y2', (d, i) => rScale(1) * Math.sin(angleSlice * i - Math.PI / 2))
+      .style('stroke', '#333')
+      .style('stroke-width', '1px');
+    
+    // Add trait labels
+    axis.append('text')
+      .style('font-size', '12px')
+      .style('fill', d => d.color)
+      .style('font-weight', '600')
+      .attr('text-anchor', 'middle')
+      .attr('x', (d, i) => (rScale(1) + 25) * Math.cos(angleSlice * i - Math.PI / 2))
+      .attr('y', (d, i) => (rScale(1) + 25) * Math.sin(angleSlice * i - Math.PI / 2))
+      .text(d => d.label);
+    
+    // Prepare data
+    const radarData = traits.map((trait, i) => ({
+      trait,
+      value: personality[trait.key],
+      angle: angleSlice * i
+    }));
+    
+    // Draw radar area
+    const radarLine = d3.lineRadial()
+      .radius(d => rScale(d.value))
+      .angle(d => d.angle)
+      .curve(d3.curveLinearClosed);
+    
+    g.append('path')
+      .datum(radarData)
+      .attr('d', radarLine)
+      .style('fill', '#00a8ff')
+      .style('fill-opacity', 0.2)
+      .style('stroke', '#00a8ff')
+      .style('stroke-width', 2);
+    
+    // Draw interactive dots
+    const dots = g.selectAll('.radar-dot')
+      .data(radarData)
+      .enter()
+      .append('g')
+      .attr('class', 'radar-dot')
+      .attr('transform', d => {
+        const x = rScale(d.value) * Math.cos(d.angle - Math.PI / 2);
+        const y = rScale(d.value) * Math.sin(d.angle - Math.PI / 2);
+        return `translate(${x},${y})`;
+      });
+    
+    dots.append('circle')
+      .attr('r', 6)
+      .style('fill', d => d.trait.color)
+      .style('stroke', '#fff')
+      .style('stroke-width', 2)
+      .style('cursor', 'grab');
+    
+    // Add drag behavior
+    const drag = d3.drag()
+      .on('drag', function(event, d) {
+        const [x, y] = d3.pointer(event, g.node());
+        const distance = Math.sqrt(x * x + y * y);
+        const newValue = Math.max(0, Math.min(1, distance / radius));
+        
+        handleTraitChange(d.trait.key, newValue);
+      });
+    
+    dots.call(drag);
+    
+    // Add value labels on hover
+    dots.on('mouseover', function(event, d) {
+      d3.select(this)
+        .append('text')
+        .attr('class', 'value-label')
+        .attr('y', -10)
+        .attr('text-anchor', 'middle')
+        .style('fill', d.trait.color)
+        .style('font-size', '12px')
+        .style('font-weight', 'bold')
+        .text(`${(d.value * 100).toFixed(0)}%`);
+    })
+    .on('mouseout', function() {
+      d3.select(this).select('.value-label').remove();
+    });
+    
+  }, [personality]);
   
   const handleTraitChange = (trait, value) => {
-    const newTraits = { ...localTraits, [trait]: value };
-    setLocalTraits(newTraits);
-    
-    if (editMode && onTraitChange) {
-      onTraitChange(newTraits);
-    }
+    const newPersonality = { ...personality, [trait]: value };
+    setPersonality(newPersonality);
+    setSelectedPreset(null);
   };
   
-  const handlePresetSelect = (preset) => {
+  const applyPreset = (preset) => {
+    setPersonality(preset.values);
     setSelectedPreset(preset.name);
-    setLocalTraits(preset.traits);
-    
-    if (onTraitChange) {
-      onTraitChange(preset.traits);
-    }
   };
   
-  const calculatePersonalityProfile = () => {
-    const profiles = [];
-    
-    if (localTraits.openness > 0.7 && localTraits.extraversion > 0.6) {
-      profiles.push('Explorer');
-    }
-    if (localTraits.conscientiousness > 0.7 && localTraits.agreeableness > 0.7) {
-      profiles.push('Caregiver');
-    }
-    if (localTraits.openness > 0.7 && localTraits.conscientiousness < 0.5) {
-      profiles.push('Artist');
-    }
-    if (localTraits.extraversion < 0.4 && localTraits.conscientiousness > 0.7) {
-      profiles.push('Analyst');
-    }
-    if (localTraits.agreeableness > 0.8 && localTraits.neuroticism < 0.3) {
-      profiles.push('Peacemaker');
-    }
-    
-    return profiles.length > 0 ? profiles.join(' / ') : 'Balanced';
+  const savePersonality = () => {
+    onPersonalityChange(personality);
   };
   
-  const getTraitModifiers = () => {
-    const modifiers = [];
-    
-    if (localTraits.openness > 0.8) {
-      modifiers.push({ text: 'Highly creative responses', type: 'positive' });
-    }
-    if (localTraits.conscientiousness > 0.8) {
-      modifiers.push({ text: 'Detailed and thorough', type: 'positive' });
-    }
-    if (localTraits.extraversion > 0.8) {
-      modifiers.push({ text: 'Enthusiastic communication', type: 'positive' });
-    }
-    if (localTraits.agreeableness > 0.8) {
-      modifiers.push({ text: 'Empathetic understanding', type: 'positive' });
-    }
-    if (localTraits.neuroticism > 0.6) {
-      modifiers.push({ text: 'Heightened sensitivity', type: 'caution' });
-    }
-    
-    return modifiers;
+  const resetPersonality = () => {
+    const defaultPersonality = {
+      openness: 0.8,
+      conscientiousness: 0.7,
+      extraversion: 0.6,
+      agreeableness: 0.8,
+      neuroticism: 0.3
+    };
+    setPersonality(defaultPersonality);
+    setSelectedPreset(null);
   };
   
   return (
     <div className="personality-tuner">
       <div className="tuner-header">
         <h3>Personality Configuration</h3>
-        <div className="tuner-controls">
-          <button
-            className={`mode-toggle ${editMode ? 'active' : ''}`}
-            onClick={() => setEditMode(!editMode)}
-          >
-            {editMode ? '🔓 Editing' : '🔒 Locked'}
-          </button>
-          <button
-            className="advanced-toggle"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            {showAdvanced ? '📊 Simple' : '🔬 Advanced'}
-          </button>
-        </div>
+        <button
+          onClick={() => setShowDescription(!showDescription)}
+          className="toggle-description"
+        >
+          {showDescription ? 'Hide' : 'Show'} Descriptions
+        </button>
       </div>
       
-      <div className="personality-profile">
-        <div className="profile-label">Current Profile</div>
-        <div className="profile-name">{calculatePersonalityProfile()}</div>
-      </div>
-      
-      <div className="trait-sliders">
-        {Object.entries(traitInfo).map(([trait, info]) => (
-          <div key={trait} className="trait-control">
-            <div className="trait-header">
-              <span className="trait-icon">{info.icon}</span>
-              <span className="trait-label">{info.label}</span>
-              <span className="trait-value">{(localTraits[trait] * 100).toFixed(0)}%</span>
+      <div className="tuner-content">
+        <div className="radar-section">
+          <svg ref={radarRef} />
+          
+          <div className="presets">
+            <h4>Presets</h4>
+            <div className="preset-buttons">
+              {presets.map(preset => (
+                <motion.button
+                  key={preset.name}
+                  className={`preset-button ${selectedPreset === preset.name ? 'active' : ''}`}
+                  onClick={() => applyPreset(preset)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  {preset.name}
+                </motion.button>
+              ))}
             </div>
-            
-            <div className="trait-slider-container">
-              <span className="slider-label low">{info.low}</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={localTraits[trait] * 100}
-                onChange={(e) => handleTraitChange(trait, e.target.value / 100)}
-                disabled={!editMode}
-                className="trait-slider"
-                style={{
-                  '--slider-color': info.color,
-                  '--slider-value': `${localTraits[trait] * 100}%`
-                }}
-              />
-              <span className="slider-label high">{info.high}</span>
-            </div>
-            
-            {showAdvanced && (
-              <div className="trait-description">{info.description}</div>
+            {selectedPreset && (
+              <p className="preset-description">
+                {presets.find(p => p.name === selectedPreset)?.description}
+              </p>
             )}
           </div>
-        ))}
-      </div>
-      
-      <div className="preset-section">
-        <div className="section-header">Personality Presets</div>
-        <div className="preset-grid">
-          {presets.map((preset) => (
-            <button
-              key={preset.name}
-              className={`preset-button ${selectedPreset === preset.name ? 'selected' : ''}`}
-              onClick={() => handlePresetSelect(preset)}
-              disabled={!editMode}
-            >
-              {preset.name}
-            </button>
+        </div>
+        
+        <div className="sliders-section">
+          <h4>Fine-tune Traits</h4>
+          {traits.map(trait => (
+            <div key={trait.key} className="trait-slider">
+              <div className="trait-header">
+                <label style={{ color: trait.color }}>{trait.label}</label>
+                <span className="trait-value">{(personality[trait.key] * 100).toFixed(0)}%</span>
+              </div>
+              
+              {showDescription && (
+                <p className="trait-description">{trait.description}</p>
+              )}
+              
+              <div className="slider-wrapper">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={personality[trait.key] * 100}
+                  onChange={(e) => handleTraitChange(trait.key, parseInt(e.target.value) / 100)}
+                  className="trait-range"
+                  style={{
+                    background: `linear-gradient(to right, ${trait.color} 0%, ${trait.color} ${personality[trait.key] * 100}%, #333 ${personality[trait.key] * 100}%, #333 100%)`
+                  }}
+                />
+              </div>
+            </div>
           ))}
         </div>
       </div>
       
-      <AnimatePresence>
-        {showAdvanced && (
-          <motion.div
-            className="advanced-section"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <div className="section-header">Behavioral Modifiers</div>
-            <div className="modifier-list">
-              {getTraitModifiers().map((modifier, index) => (
-                <div key={index} className={`modifier-item ${modifier.type}`}>
-                  <span className="modifier-icon">
-                    {modifier.type === 'positive' ? '✓' : '!'}
-                  </span>
-                  <span className="modifier-text">{modifier.text}</span>
-                </div>
-              ))}
-            </div>
-            
-            <div className="trait-visualization">
-              <svg viewBox="0 0 300 300" className="personality-radar">
-                <defs>
-                  <radialGradient id="radarGradient">
-                    <stop offset="0%" stopColor="#00ff88" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#00ff88" stopOpacity="0.1" />
-                  </radialGradient>
-                </defs>
-                
-                {/* Background circles */}
-                {[0.2, 0.4, 0.6, 0.8, 1].map((scale) => (
-                  <circle
-                    key={scale}
-                    cx="150"
-                    cy="150"
-                    r={scale * 120}
-                    fill="none"
-                    stroke="#333"
-                    strokeWidth="1"
-                    opacity="0.3"
-                  />
-                ))}
-                
-                {/* Axis lines */}
-                {Object.keys(traitInfo).map((trait, index) => {
-                  const angle = (index * 72 - 90) * (Math.PI / 180);
-                  const x = 150 + Math.cos(angle) * 120;
-                  const y = 150 + Math.sin(angle) * 120;
-                  return (
-                    <line
-                      key={trait}
-                      x1="150"
-                      y1="150"
-                      x2={x}
-                      y2={y}
-                      stroke="#333"
-                      strokeWidth="1"
-                      opacity="0.3"
-                    />
-                  );
-                })}
-                
-                {/* Personality shape */}
-                <polygon
-                  points={Object.keys(traitInfo).map((trait, index) => {
-                    const angle = (index * 72 - 90) * (Math.PI / 180);
-                    const radius = localTraits[trait] * 120;
-                    const x = 150 + Math.cos(angle) * radius;
-                    const y = 150 + Math.sin(angle) * radius;
-                    return `${x},${y}`;
-                  }).join(' ')}
-                  fill="url(#radarGradient)"
-                  stroke="#00ff88"
-                  strokeWidth="2"
-                />
-                
-                {/* Trait labels */}
-                {Object.entries(traitInfo).map(([trait, info], index) => {
-                  const angle = (index * 72 - 90) * (Math.PI / 180);
-                  const x = 150 + Math.cos(angle) * 140;
-                  const y = 150 + Math.sin(angle) * 140;
-                  return (
-                    <text
-                      key={trait}
-                      x={x}
-                      y={y}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill="#888"
-                      fontSize="12"
-                    >
-                      {info.icon} {info.label}
-                    </text>
-                  );
-                })}
-              </svg>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="behavioral-preview">
+        <h4>Behavioral Preview</h4>
+        <div className="preview-grid">
+          <div className="preview-item">
+            <label>Communication Style</label>
+            <p>{getCommunicationStyle(personality)}</p>
+          </div>
+          <div className="preview-item">
+            <label>Response Tendency</label>
+            <p>{getResponseTendency(personality)}</p>
+          </div>
+          <div className="preview-item">
+            <label>Emotional Expression</label>
+            <p>{getEmotionalExpression(personality)}</p>
+          </div>
+        </div>
+      </div>
       
       <div className="tuner-actions">
-        <button
-          className="reset-button"
-          onClick={() => {
-            if (onReset) onReset();
-            setSelectedPreset(null);
-          }}
-          disabled={!editMode}
-        >
-          Reset to Defaults
+        <button onClick={savePersonality} className="save-button">
+          Apply Personality Changes
         </button>
-        <button
-          className="save-button"
-          onClick={() => onTraitChange && onTraitChange(localTraits)}
-          disabled={!editMode}
-        >
-          Apply Changes
+        <button onClick={resetPersonality} className="reset-button">
+          Reset to Default
         </button>
       </div>
       
       <style jsx>{`
         .personality-tuner {
-          background: rgba(26, 26, 26, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 12px;
-          padding: 24px;
-          max-width: 600px;
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
         }
         
         .tuner-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 20px;
         }
         
         .tuner-header h3 {
           margin: 0;
-          color: #e0e0e0;
-          font-size: 20px;
+          font-size: 18px;
+          font-weight: 600;
         }
         
-        .tuner-controls {
-          display: flex;
-          gap: 8px;
-        }
-        
-        .mode-toggle,
-        .advanced-toggle {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
+        .toggle-description {
           padding: 6px 12px;
+          background: #252525;
+          border: 1px solid #333;
+          border-radius: 6px;
           color: #888;
           font-size: 12px;
           cursor: pointer;
           transition: all 0.2s;
         }
         
-        .mode-toggle:hover,
-        .advanced-toggle:hover {
-          background: rgba(255, 255, 255, 0.1);
+        .toggle-description:hover {
+          background: #333;
           color: #e0e0e0;
         }
         
-        .mode-toggle.active {
-          background: rgba(0, 255, 136, 0.1);
-          border-color: rgba(0, 255, 136, 0.3);
-          color: #00ff88;
+        .tuner-content {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
         }
         
-        .personality-profile {
-          background: rgba(0, 168, 255, 0.1);
-          border: 1px solid rgba(0, 168, 255, 0.2);
-          border-radius: 8px;
+        @media (max-width: 768px) {
+          .tuner-content {
+            grid-template-columns: 1fr;
+          }
+        }
+        
+        .radar-section {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 20px;
+        }
+        
+        .presets {
+          width: 100%;
           padding: 16px;
-          margin-bottom: 24px;
-          text-align: center;
+          background: #1a1a1a;
+          border-radius: 8px;
         }
         
-        .profile-label {
-          font-size: 11px;
+        .presets h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          font-weight: 600;
           color: #888;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          margin-bottom: 4px;
         }
         
-        .profile-name {
-          font-size: 18px;
-          color: #00a8ff;
-          font-weight: 600;
-        }
-        
-        .trait-sliders {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          margin-bottom: 24px;
-        }
-        
-        .trait-control {
-          display: flex;
-          flex-direction: column;
+        .preset-buttons {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
           gap: 8px;
+          margin-bottom: 12px;
+        }
+        
+        .preset-button {
+          padding: 8px 12px;
+          background: #252525;
+          border: 1px solid #333;
+          border-radius: 6px;
+          color: #a0a0a0;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .preset-button:hover {
+          background: #333;
+          color: #e0e0e0;
+          border-color: #444;
+        }
+        
+        .preset-button.active {
+          background: #00a8ff;
+          color: white;
+          border-color: #00a8ff;
+        }
+        
+        .preset-description {
+          margin: 0;
+          font-size: 13px;
+          color: #888;
+          font-style: italic;
+        }
+        
+        .sliders-section {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        
+        .sliders-section h4 {
+          margin: 0 0 8px 0;
+          font-size: 14px;
+          font-weight: 600;
+          color: #888;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        .trait-slider {
+          padding: 12px;
+          background: #1a1a1a;
+          border-radius: 8px;
         }
         
         .trait-header {
           display: flex;
+          justify-content: space-between;
           align-items: center;
-          gap: 8px;
+          margin-bottom: 4px;
         }
         
-        .trait-icon {
-          font-size: 18px;
-        }
-        
-        .trait-label {
-          flex: 1;
-          color: #e0e0e0;
+        .trait-header label {
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 600;
         }
         
         .trait-value {
-          color: #00ff88;
           font-size: 14px;
           font-weight: 600;
-          min-width: 40px;
-          text-align: right;
+          color: #e0e0e0;
         }
         
-        .trait-slider-container {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        
-        .slider-label {
-          font-size: 11px;
+        .trait-description {
+          margin: 0 0 8px 0;
+          font-size: 12px;
           color: #666;
-          min-width: 80px;
         }
         
-        .slider-label.low {
-          text-align: right;
+        .slider-wrapper {
+          position: relative;
         }
         
-        .trait-slider {
-          flex: 1;
+        .trait-range {
+          width: 100%;
           height: 6px;
           border-radius: 3px;
           outline: none;
           -webkit-appearance: none;
-          background: linear-gradient(
-            to right,
-            var(--slider-color) 0%,
-            var(--slider-color) var(--slider-value),
-            rgba(255, 255, 255, 0.1) var(--slider-value),
-            rgba(255, 255, 255, 0.1) 100%
-          );
           cursor: pointer;
         }
         
-        .trait-slider:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        
-        .trait-slider::-webkit-slider-thumb {
+        .trait-range::-webkit-slider-thumb {
           -webkit-appearance: none;
-          width: 16px;
-          height: 16px;
+          width: 18px;
+          height: 18px;
+          background: white;
           border-radius: 50%;
-          background: var(--slider-color);
-          cursor: pointer;
-          border: 2px solid #0a0a0a;
-          box-shadow: 0 0 0 1px var(--slider-color);
+          cursor: grab;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         
-        .trait-description {
-          font-size: 12px;
-          color: #666;
-          padding-left: 26px;
+        .trait-range::-webkit-slider-thumb:active {
+          cursor: grabbing;
         }
         
-        .preset-section {
-          margin-bottom: 24px;
+        .behavioral-preview {
+          padding: 20px;
+          background: #1a1a1a;
+          border-radius: 12px;
+          border: 1px solid #333;
         }
         
-        .section-header {
+        .behavioral-preview h4 {
+          margin: 0 0 16px 0;
+          font-size: 16px;
+          font-weight: 600;
+        }
+        
+        .preview-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 16px;
+        }
+        
+        .preview-item {
+          padding: 12px;
+          background: #0a0a0a;
+          border-radius: 6px;
+        }
+        
+        .preview-item label {
+          display: block;
           font-size: 12px;
           color: #888;
+          font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          margin-bottom: 12px;
+          margin-bottom: 6px;
         }
         
-        .preset-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-          gap: 8px;
-        }
-        
-        .preset-button {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          padding: 8px 12px;
-          color: #888;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .preset-button:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.1);
-          color: #e0e0e0;
-        }
-        
-        .preset-button.selected {
-          background: rgba(0, 255, 136, 0.1);
-          border-color: rgba(0, 255, 136, 0.3);
-          color: #00ff88;
-        }
-        
-        .preset-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        
-        .advanced-section {
-          margin-bottom: 24px;
-        }
-        
-        .modifier-list {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          margin-bottom: 20px;
-        }
-        
-        .modifier-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
+        .preview-item p {
+          margin: 0;
           font-size: 13px;
-        }
-        
-        .modifier-item.positive {
-          border-color: rgba(0, 255, 136, 0.2);
-          color: #00ff88;
-        }
-        
-        .modifier-item.caution {
-          border-color: rgba(255, 170, 0, 0.2);
-          color: #ffaa00;
-        }
-        
-        .modifier-icon {
-          font-size: 14px;
-        }
-        
-        .trait-visualization {
-          display: flex;
-          justify-content: center;
-          margin-top: 20px;
-        }
-        
-        .personality-radar {
-          width: 300px;
-          height: 300px;
+          color: #e0e0e0;
+          line-height: 1.5;
         }
         
         .tuner-actions {
           display: flex;
           gap: 12px;
-          justify-content: flex-end;
         }
         
-        .reset-button,
         .save-button {
-          padding: 8px 16px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          font-size: 14px;
+          flex: 1;
+          padding: 12px;
+          background: linear-gradient(135deg, #00a8ff 0%, #0066ff 100%);
+          border: none;
+          border-radius: 8px;
+          color: white;
+          font-weight: 600;
           cursor: pointer;
           transition: all 0.2s;
         }
         
+        .save-button:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 168, 255, 0.3);
+        }
+        
         .reset-button {
-          background: rgba(255, 0, 102, 0.1);
-          color: #ff0066;
-          border-color: rgba(255, 0, 102, 0.2);
+          padding: 12px 24px;
+          background: #252525;
+          border: 1px solid #333;
+          border-radius: 8px;
+          color: #a0a0a0;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
         }
         
-        .reset-button:hover:not(:disabled) {
-          background: rgba(255, 0, 102, 0.2);
-          border-color: rgba(255, 0, 102, 0.3);
-        }
-        
-        .save-button {
-          background: rgba(0, 255, 136, 0.1);
-          color: #00ff88;
-          border-color: rgba(0, 255, 136, 0.2);
-        }
-        
-        .save-button:hover:not(:disabled) {
-          background: rgba(0, 255, 136, 0.2);
-          border-color: rgba(0, 255, 136, 0.3);
-        }
-        
-        .reset-button:disabled,
-        .save-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
+        .reset-button:hover {
+          background: #333;
+          color: #e0e0e0;
+          border-color: #444;
         }
       `}</style>
     </div>
   );
+};
+
+// Helper functions for behavioral preview
+const getCommunicationStyle = (personality) => {
+  const { openness, extraversion, agreeableness } = personality;
+  
+  if (openness > 0.7 && extraversion > 0.7) {
+    return "Enthusiastic and creative, eager to explore ideas and engage deeply";
+  } else if (agreeableness > 0.7 && extraversion < 0.5) {
+    return "Thoughtful and considerate, preferring careful and harmonious exchanges";
+  } else if (openness > 0.7 && agreeableness < 0.5) {
+    return "Direct and innovative, focused on exploring concepts without sugar-coating";
+  } else {
+    return "Balanced and adaptive, adjusting style based on context and needs";
+  }
+};
+
+const getResponseTendency = (personality) => {
+  const { conscientiousness, neuroticism, openness } = personality;
+  
+  if (conscientiousness > 0.7 && neuroticism < 0.4) {
+    return "Structured and reliable, providing thorough and well-organized responses";
+  } else if (openness > 0.7 && conscientiousness < 0.5) {
+    return "Flexible and exploratory, offering creative perspectives and possibilities";
+  } else if (neuroticism > 0.6) {
+    return "Emotionally attuned, responses reflect deeper sensitivity to nuance";
+  } else {
+    return "Adaptive and contextual, tailoring responses to the situation";
+  }
+};
+
+const getEmotionalExpression = (personality) => {
+  const { neuroticism, extraversion, agreeableness } = personality;
+  
+  if (neuroticism > 0.6 && agreeableness > 0.7) {
+    return "Rich emotional depth with empathetic understanding";
+  } else if (extraversion > 0.7 && neuroticism < 0.4) {
+    return "Positive and energetic, maintaining upbeat emotional tone";
+  } else if (neuroticism < 0.3 && extraversion < 0.5) {
+    return "Calm and steady, emotions expressed with measured stability";
+  } else {
+    return "Balanced emotional range, expressing feelings appropriately to context";
+  }
 };
 
 export default PersonalityTuner;

@@ -1,493 +1,404 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import './AttentionIndicator.css';
 
 const AttentionIndicator = ({ attention, isActive = false }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [pulseIntensity, setPulseIntensity] = useState(0);
-  const [attentionHistory, setAttentionHistory] = useState([]);
+  const [dimensions, setDimensions] = useState([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [pulseAnimation, setPulseAnimation] = useState(false);
   const canvasRef = useRef(null);
   
-  // Parse attention data
-  const parseAttention = (attentionData) => {
-    if (!attentionData) return null;
-    
-    if (typeof attentionData === 'string') {
-      return {
-        primary_focus: attentionData,
-        dimensions: {},
-        focus_type: 'general',
-        confidence: 0.5
-      };
+  // Parse attention string to extract dimensions
+  useEffect(() => {
+    if (!attention) {
+      setDimensions([]);
+      return;
     }
     
-    return attentionData;
-  };
+    const parsed = parseAttentionString(attention);
+    setDimensions(parsed);
+  }, [attention]);
   
-  const currentAttention = parseAttention(attention);
-  
-  // Update attention history
+  // Trigger pulse animation when active
   useEffect(() => {
-    if (currentAttention && currentAttention.primary_focus) {
-      setAttentionHistory(prev => [...prev.slice(-9), currentAttention]);
+    if (isActive) {
+      setPulseAnimation(true);
+      const timer = setTimeout(() => setPulseAnimation(false), 2000);
+      return () => clearTimeout(timer);
     }
-  }, [currentAttention?.primary_focus]);
+  }, [isActive]);
   
-  // Calculate pulse intensity based on confidence
+  // Draw attention visualization on canvas
   useEffect(() => {
-    if (currentAttention?.confidence) {
-      setPulseIntensity(currentAttention.confidence);
-    }
-  }, [currentAttention?.confidence]);
-  
-  // Draw attention visualization
-  useEffect(() => {
-    if (!canvasRef.current || !currentAttention?.dimensions) return;
+    if (!canvasRef.current || dimensions.length === 0) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const maxRadius = Math.min(width, height) / 2 - 10;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 40;
     
     // Clear canvas
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw dimension rays
-    const dimensions = Object.entries(currentAttention.dimensions);
-    const angleStep = (Math.PI * 2) / Math.max(dimensions.length, 1);
-    
-    dimensions.forEach(([key, value], index) => {
-      const angle = angleStep * index - Math.PI / 2;
-      const radius = maxRadius * value;
-      const x = centerX + Math.cos(angle) * radius;
-      const y = centerY + Math.sin(angle) * radius;
-      
-      // Draw ray
-      ctx.beginPath();
-      ctx.moveTo(centerX, centerY);
-      ctx.lineTo(x, y);
-      ctx.strokeStyle = getColorForDimension(key);
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      // Draw point
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = getColorForDimension(key);
-      ctx.fill();
-      
-      // Draw label
-      ctx.font = '10px sans-serif';
-      ctx.fillStyle = '#888';
-      ctx.textAlign = 'center';
-      ctx.fillText(key, x, y - 8);
-    });
-    
-    // Draw center point
+    // Draw background circle
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#00ff88';
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(0, 168, 255, 0.1)';
     ctx.fill();
     
-    // Connect points to form shape
-    if (dimensions.length > 2) {
+    // Draw attention segments
+    let startAngle = -Math.PI / 2;
+    dimensions.forEach(dim => {
+      const angle = (dim.value / 100) * 2 * Math.PI;
+      
       ctx.beginPath();
-      dimensions.forEach(([key, value], index) => {
-        const angle = angleStep * index - Math.PI / 2;
-        const radius = maxRadius * value;
-        const x = centerX + Math.cos(angle) * radius;
-        const y = centerY + Math.sin(angle) * radius;
-        
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius * 0.9, startAngle, startAngle + angle);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(0, 255, 136, 0.1)';
+      
+      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      gradient.addColorStop(0, dim.color + 'CC');
+      gradient.addColorStop(1, dim.color + '33');
+      ctx.fillStyle = gradient;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-  }, [currentAttention?.dimensions]);
+      
+      startAngle += angle;
+    });
+    
+    // Draw center dot
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    
+  }, [dimensions]);
   
-  const getColorForDimension = (dimension) => {
-    const colors = {
-      novelty: '#00a8ff',
-      relevance: '#00ff88',
+  const parseAttentionString = (attentionStr) => {
+    const dimensionColors = {
       emotional: '#ff00aa',
-      complexity: '#ffaa00',
-      urgency: '#ff0066',
-      personal: '#8a2be2'
+      analytical: '#00a8ff',
+      creative: '#00ff88',
+      personal: '#ffaa00',
+      philosophical: '#aa00ff',
+      practical: '#00ffaa',
+      memory: '#ff6b6b',
+      learning: '#4ecdc4'
     };
-    return colors[dimension] || '#666';
+    
+    const parsed = [];
+    const patterns = Object.keys(dimensionColors).map(key => ({
+      key,
+      regex: new RegExp(`${key}\\s*(?:focus|attention)?\\s*(?::|-)\\s*(\\d+)%?`, 'gi')
+    }));
+    
+    patterns.forEach(({ key, regex }) => {
+      const match = attentionStr.match(regex);
+      if (match) {
+        const value = parseInt(match[0].match(/\d+/)[0]);
+        parsed.push({
+          type: key,
+          value: Math.min(100, value),
+          color: dimensionColors[key]
+        });
+      }
+    });
+    
+    // If no specific dimensions found, try to infer from content
+    if (parsed.length === 0) {
+      const inferredDimensions = inferAttentionFromContent(attentionStr);
+      parsed.push(...inferredDimensions);
+    }
+    
+    return parsed;
   };
   
-  const getFocusTypeIcon = (type) => {
-    const icons = {
-      emotional: '💭',
-      analytical: '🔍',
-      creative: '✨',
-      memory: '💎',
-      philosophical: '🌌',
-      technical: '⚙️',
-      personal: '❤️',
-      general: '👁️'
+  const inferAttentionFromContent = (content) => {
+    const inferred = [];
+    const keywords = {
+      emotional: ['feeling', 'emotion', 'care', 'love', 'joy', 'concern'],
+      analytical: ['analyze', 'logic', 'reason', 'think', 'calculate', 'solve'],
+      creative: ['create', 'imagine', 'design', 'innovate', 'artistic'],
+      personal: ['you', 'your', 'personal', 'individual', 'relationship'],
+      philosophical: ['meaning', 'purpose', 'existence', 'consciousness', 'nature'],
+      practical: ['practical', 'useful', 'application', 'implement', 'action']
     };
-    return icons[type] || '👁️';
+    
+    Object.entries(keywords).forEach(([type, words]) => {
+      const found = words.some(word => 
+        content.toLowerCase().includes(word)
+      );
+      
+      if (found) {
+        inferred.push({
+          type,
+          value: 50 + Math.random() * 30,
+          color: getDimensionColor(type)
+        });
+      }
+    });
+    
+    return inferred.slice(0, 3); // Limit to top 3
   };
   
-  if (!currentAttention) {
-    return (
-      <div className="attention-indicator inactive">
-        <div className="attention-icon">👁️</div>
-        <span className="attention-text">No active focus</span>
-      </div>
+  const getDimensionColor = (type) => {
+    const colors = {
+      emotional: '#ff00aa',
+      analytical: '#00a8ff',
+      creative: '#00ff88',
+      personal: '#ffaa00',
+      philosophical: '#aa00ff',
+      practical: '#00ffaa'
+    };
+    return colors[type] || '#666';
+  };
+  
+  const getAttentionSummary = () => {
+    if (dimensions.length === 0) return 'Gathering focus...';
+    
+    const primary = dimensions.reduce((max, dim) => 
+      dim.value > max.value ? dim : max
     );
-  }
+    
+    return `Primary: ${primary.type} (${primary.value}%)`;
+  };
   
   return (
-    <div className="attention-indicator-container">
-      <motion.div
-        className={`attention-indicator ${isActive ? 'active' : ''}`}
-        onClick={() => setExpanded(!expanded)}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+    <div className="attention-indicator">
+      <motion.div 
+        className={`indicator-main ${pulseAnimation ? 'pulsing' : ''}`}
+        onClick={() => setIsExpanded(!isExpanded)}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
       >
-        <motion.div
-          className="attention-icon"
-          animate={{
-            scale: isActive ? [1, 1.2, 1] : 1,
-            opacity: isActive ? [0.8, 1, 0.8] : 1
-          }}
-          transition={{
-            duration: 2,
-            repeat: isActive ? Infinity : 0,
-            ease: "easeInOut"
-          }}
-        >
-          {getFocusTypeIcon(currentAttention.focus_type)}
-        </motion.div>
-        
-        <div className="attention-content">
-          <div className="attention-focus">
-            {currentAttention.primary_focus}
-          </div>
-          <div className="attention-meta">
-            <span className="focus-type">{currentAttention.focus_type}</span>
-            {currentAttention.confidence && (
-              <span className="confidence">
-                {(currentAttention.confidence * 100).toFixed(0)}% confident
-              </span>
-            )}
-          </div>
-        </div>
-        
-        <motion.div
-          className="pulse-ring"
-          animate={{
-            scale: [1, 1.5, 1],
-            opacity: [0.3, 0, 0.3]
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: "easeOut",
-            times: [0, 0.5, 1]
-          }}
-          style={{
-            opacity: pulseIntensity * 0.3
-          }}
+        <canvas 
+          ref={canvasRef}
+          width={100}
+          height={100}
+          className="attention-canvas"
         />
+        
+        <div className="indicator-info">
+          <h4>Current Attention</h4>
+          <p>{attention ? getAttentionSummary() : 'Unfocused'}</p>
+          {isActive && (
+            <motion.div 
+              className="active-indicator"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              <span className="active-dot" />
+              Processing...
+            </motion.div>
+          )}
+        </div>
       </motion.div>
       
       <AnimatePresence>
-        {expanded && (
+        {isExpanded && dimensions.length > 0 && (
           <motion.div
             className="attention-details"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
           >
-            <div className="dimensions-section">
-              <h4>Attention Dimensions</h4>
-              <canvas
-                ref={canvasRef}
-                width={200}
-                height={150}
-                className="dimensions-canvas"
-              />
-              
-              <div className="dimension-list">
-                {currentAttention.dimensions && Object.entries(currentAttention.dimensions).map(([key, value]) => (
-                  <div key={key} className="dimension-item">
-                    <span className="dimension-name">{key}</span>
-                    <div className="dimension-bar">
-                      <div
-                        className="dimension-fill"
-                        style={{
-                          width: `${value * 100}%`,
-                          backgroundColor: getColorForDimension(key)
-                        }}
-                      />
-                    </div>
-                    <span className="dimension-value">{(value * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
-              </div>
+            <h5>Attention Distribution</h5>
+            
+            {dimensions.map((dim, index) => (
+              <motion.div 
+                key={dim.type}
+                className="dimension-bar"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <div className="dimension-header">
+                  <span className="dimension-type" style={{ color: dim.color }}>
+                    {dim.type}
+                  </span>
+                  <span className="dimension-value">{dim.value}%</span>
+                </div>
+                
+                <div className="dimension-progress">
+                  <motion.div 
+                    className="dimension-fill"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${dim.value}%` }}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    style={{ backgroundColor: dim.color }}
+                  />
+                </div>
+              </motion.div>
+            ))}
+            
+            <div className="attention-description">
+              <p>{getAttentionDescription(dimensions)}</p>
             </div>
-            
-            {currentAttention.secondary_considerations && currentAttention.secondary_considerations.length > 0 && (
-              <div className="secondary-section">
-                <h4>Also Considering</h4>
-                <div className="secondary-list">
-                  {currentAttention.secondary_considerations.map((consideration, index) => (
-                    <span key={index} className="secondary-item">
-                      {consideration}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {attentionHistory.length > 1 && (
-              <div className="history-section">
-                <h4>Recent Focus</h4>
-                <div className="history-list">
-                  {attentionHistory.slice(-5).reverse().map((item, index) => (
-                    <div key={index} className={`history-item ${index === 0 ? 'current' : ''}`}>
-                      <span className="history-icon">
-                        {getFocusTypeIcon(item.focus_type)}
-                      </span>
-                      <span className="history-text">
-                        {item.primary_focus}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
       
       <style jsx>{`
-        .attention-indicator-container {
-          position: relative;
+        .attention-indicator {
+          background: #1a1a1a;
+          border: 1px solid #333;
+          border-radius: 12px;
+          overflow: hidden;
         }
         
-        .attention-indicator {
+        .indicator-main {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 12px 16px;
-          background: rgba(26, 26, 26, 0.8);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
+          gap: 16px;
+          padding: 16px;
           cursor: pointer;
-          position: relative;
-          overflow: hidden;
-          transition: all 0.3s;
+          transition: all 0.2s;
         }
         
-        .attention-indicator:hover {
-          background: rgba(26, 26, 26, 0.9);
-          border-color: rgba(0, 255, 136, 0.3);
+        .indicator-main:hover {
+          background: rgba(0, 168, 255, 0.05);
         }
         
-        .attention-indicator.active {
-          border-color: rgba(0, 255, 136, 0.5);
-          box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+        .indicator-main.pulsing .attention-canvas {
+          animation: canvasPulse 2s ease-out;
         }
         
-        .attention-indicator.inactive {
-          opacity: 0.5;
-          cursor: default;
+        @keyframes canvasPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
         }
         
-        .attention-icon {
-          font-size: 24px;
-          position: relative;
-          z-index: 1;
+        .attention-canvas {
+          flex-shrink: 0;
         }
         
-        .attention-content {
+        .indicator-info {
           flex: 1;
         }
         
-        .attention-focus {
-          color: #e0e0e0;
+        .indicator-info h4 {
+          margin: 0 0 4px 0;
           font-size: 14px;
-          line-height: 1.4;
+          font-weight: 600;
+          color: #e0e0e0;
         }
         
-        .attention-meta {
-          display: flex;
-          gap: 12px;
-          margin-top: 4px;
-          font-size: 11px;
-          color: #666;
-        }
-        
-        .focus-type {
-          text-transform: capitalize;
-          color: #00ff88;
-        }
-        
-        .confidence {
+        .indicator-info p {
+          margin: 0;
+          font-size: 13px;
           color: #888;
         }
         
-        .pulse-ring {
-          position: absolute;
-          top: 50%;
-          left: 28px;
-          width: 40px;
-          height: 40px;
-          border: 2px solid #00ff88;
+        .active-indicator {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 6px;
+          font-size: 12px;
+          color: #00a8ff;
+        }
+        
+        .active-dot {
+          width: 6px;
+          height: 6px;
+          background: #00a8ff;
           border-radius: 50%;
-          transform: translate(-50%, -50%);
-          pointer-events: none;
+          animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
         }
         
         .attention-details {
-          position: absolute;
-          top: calc(100% + 8px);
-          left: 0;
-          right: 0;
-          background: rgba(26, 26, 26, 0.95);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          padding: 16px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          z-index: 100;
+          padding: 20px;
+          background: #0a0a0a;
+          border-top: 1px solid #333;
         }
         
-        .dimensions-section h4,
-        .secondary-section h4,
-        .history-section h4 {
-          margin: 0 0 12px 0;
-          font-size: 12px;
+        .attention-details h5 {
+          margin: 0 0 16px 0;
+          font-size: 13px;
+          font-weight: 600;
           color: #888;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
         
-        .dimensions-canvas {
-          width: 100%;
-          height: 150px;
+        .dimension-bar {
           margin-bottom: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 4px;
         }
         
-        .dimension-list {
+        .dimension-header {
           display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        
-        .dimension-item {
-          display: flex;
+          justify-content: space-between;
           align-items: center;
-          gap: 8px;
-          font-size: 11px;
+          margin-bottom: 6px;
         }
         
-        .dimension-name {
-          width: 70px;
-          color: #888;
+        .dimension-type {
+          font-size: 13px;
+          font-weight: 600;
           text-transform: capitalize;
         }
         
-        .dimension-bar {
-          flex: 1;
+        .dimension-value {
+          font-size: 12px;
+          color: #888;
+          font-weight: 600;
+        }
+        
+        .dimension-progress {
           height: 4px;
-          background: rgba(255, 255, 255, 0.1);
+          background: #252525;
           border-radius: 2px;
           overflow: hidden;
         }
         
         .dimension-fill {
           height: 100%;
-          transition: width 0.3s ease;
+          border-radius: 2px;
         }
         
-        .dimension-value {
-          width: 35px;
-          text-align: right;
-          color: #e0e0e0;
-        }
-        
-        .secondary-section {
+        .attention-description {
           margin-top: 16px;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 12px;
+          background: #1a1a1a;
+          border-radius: 8px;
         }
         
-        .secondary-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-        }
-        
-        .secondary-item {
-          padding: 4px 8px;
-          background: rgba(0, 168, 255, 0.1);
-          border: 1px solid rgba(0, 168, 255, 0.2);
-          border-radius: 12px;
-          font-size: 11px;
-          color: #00a8ff;
-        }
-        
-        .history-section {
-          margin-top: 16px;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .history-list {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-        
-        .history-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 4px 0;
-          font-size: 12px;
-          color: #666;
-          transition: color 0.2s;
-        }
-        
-        .history-item.current {
-          color: #e0e0e0;
-        }
-        
-        .history-icon {
-          font-size: 14px;
-          opacity: 0.6;
-        }
-        
-        .history-text {
-          flex: 1;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+        .attention-description p {
+          margin: 0;
+          font-size: 13px;
+          color: #a0a0a0;
+          line-height: 1.5;
+          font-style: italic;
         }
       `}</style>
     </div>
   );
+};
+
+// Helper function for attention descriptions
+const getAttentionDescription = (dimensions) => {
+  if (dimensions.length === 0) return '';
+  
+  const primary = dimensions.reduce((max, dim) => 
+    dim.value > max.value ? dim : max
+  );
+  
+  const descriptions = {
+    emotional: "Deeply attuned to feelings and emotional nuances in our conversation.",
+    analytical: "Focused on logical analysis and systematic understanding.",
+    creative: "Exploring imaginative possibilities and novel connections.",
+    personal: "Centered on your individual experience and our unique relationship.",
+    philosophical: "Contemplating deeper meanings and fundamental questions.",
+    practical: "Concentrated on actionable insights and real-world applications.",
+    memory: "Actively connecting to past experiences and stored knowledge.",
+    learning: "Absorbing new information and forming fresh understanding."
+  };
+  
+  return descriptions[primary.type] || "Maintaining balanced attention across multiple dimensions.";
 };
 
 export default AttentionIndicator;

@@ -1,167 +1,222 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import './MessageBubble.css';
 
 const MessageBubble = ({ message }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showActions, setShowActions] = useState(false);
+  const [detectedActions, setDetectedActions] = useState([]);
   
-  const isUser = message.role === 'user';
-  const isError = message.role === 'error';
-  const hasThinking = message.thinking && message.thinking.length > 0;
-  const hasAttention = message.attention_focus && message.attention_focus.length > 0;
+  useEffect(() => {
+    // Detect actions in the message content
+    const actions = detectActions(message.content);
+    setDetectedActions(actions);
+  }, [message.content]);
   
-  // Parse message for action indicators
-  const parseActions = (content) => {
-    const actionPatterns = [
-      { pattern: /I'll remember/gi, type: 'memory', icon: '💎' },
-      { pattern: /This reminds me/gi, type: 'recall', icon: '🔍' },
-      { pattern: /I'm feeling/gi, type: 'emotion', icon: '💭' },
-      { pattern: /Let me think/gi, type: 'thinking', icon: '🧠' },
-      { pattern: /I'll focus on/gi, type: 'focus', icon: '🎯' }
-    ];
+  const detectActions = (content) => {
+    const actions = [];
     
-    const detectedActions = [];
-    actionPatterns.forEach(({ pattern, type, icon }) => {
+    // Pattern matching for different action types
+    const patterns = {
+      memory: /\b(remember|storing|saved|recorded)\b/i,
+      emotion: /\b(feeling|emotion|mood)\b/i,
+      goal: /\b(goal|objective|aim|plan)\b/i,
+      attention: /\b(focus|attention|concentrat)/i,
+      learning: /\b(learn|understand|realize|discover)\b/i
+    };
+    
+    Object.entries(patterns).forEach(([type, pattern]) => {
       if (pattern.test(content)) {
-        detectedActions.push({ type, icon });
+        actions.push(type);
       }
     });
     
-    return detectedActions;
+    return actions;
   };
   
-  const actions = parseActions(message.content);
-  
-  // Format timestamp
-  const formatTime = (timestamp) => {
+  const formatTimestamp = (timestamp) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
   
-  // Highlight action phrases in content
-  const highlightContent = (content) => {
-    let highlighted = content;
-    
-    // Highlight action phrases
-    const highlights = [
-      { pattern: /(I'll remember.*?)(?=\.|$)/gi, className: 'action-memory' },
-      { pattern: /(This reminds me.*?)(?=\.|$)/gi, className: 'action-recall' },
-      { pattern: /(I'm feeling.*?)(?=\.|$)/gi, className: 'action-emotion' },
-      { pattern: /(Let me think.*?)(?=\.|$)/gi, className: 'action-thinking' },
-      { pattern: /(I'll focus on.*?)(?=\.|$)/gi, className: 'action-focus' }
-    ];
-    
-    highlights.forEach(({ pattern, className }) => {
-      highlighted = highlighted.replace(pattern, `<span class="${className}">$1</span>`);
-    });
-    
-    return { __html: highlighted };
+  const getActionIcon = (action) => {
+    const icons = {
+      memory: '💎',
+      emotion: '💭',
+      goal: '🎯',
+      attention: '👁️',
+      learning: '📚'
+    };
+    return icons[action] || '✨';
   };
+  
+  const renderContent = () => {
+    if (!message.content) return null;
+    
+    // Split content into paragraphs
+    const paragraphs = message.content.split('\n\n');
+    
+    return paragraphs.map((paragraph, index) => {
+      // Check if it's a code block
+      if (paragraph.startsWith('```')) {
+        const lines = paragraph.split('\n');
+        const language = lines[0].replace('```', '').trim();
+        const code = lines.slice(1, -1).join('\n');
+        
+        return (
+          <pre key={index} className="code-block">
+            <div className="code-header">
+              <span className="code-language">{language || 'code'}</span>
+              <button 
+                onClick={() => navigator.clipboard.writeText(code)}
+                className="copy-button"
+              >
+                Copy
+              </button>
+            </div>
+            <code>{code}</code>
+          </pre>
+        );
+      }
+      
+      // Check if it's a list
+      if (paragraph.includes('\n- ') || paragraph.includes('\n* ')) {
+        const items = paragraph.split('\n').filter(line => line.trim());
+        return (
+          <ul key={index} className="message-list">
+            {items.map((item, i) => (
+              <li key={i}>{item.replace(/^[*-]\s*/, '')}</li>
+            ))}
+          </ul>
+        );
+      }
+      
+      // Regular paragraph with inline formatting
+      return (
+        <p key={index} className="message-paragraph">
+          {formatInlineText(paragraph)}
+        </p>
+      );
+    });
+  };
+  
+  const formatInlineText = (text) => {
+    // Simple inline formatting
+    const formatted = text
+      .split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/)
+      .map((part, index) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={index}>{part.slice(2, -2)}</strong>;
+        }
+        if (part.startsWith('*') && part.endsWith('*')) {
+          return <em key={index}>{part.slice(1, -1)}</em>;
+        }
+        if (part.startsWith('`') && part.endsWith('`')) {
+          return <code key={index} className="inline-code">{part.slice(1, -1)}</code>;
+        }
+        return part;
+      });
+    
+    return formatted;
+  };
+  
+  const isUser = message.role === 'user';
+  const isError = message.role === 'error';
+  const isThinking = message.role === 'thinking';
   
   return (
     <motion.div
+      className={`message-bubble ${message.role}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.3 }}
-      className={`message-bubble ${isUser ? 'user' : 'assistant'} ${isError ? 'error' : ''}`}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
     >
       <div className="message-header">
         <span className="message-role">
-          {isUser ? '👤' : '🤖'} {isUser ? 'You' : 'AIMS'}
+          {isUser ? 'You' : isError ? 'System' : isThinking ? 'Thinking' : 'Claude'}
         </span>
-        <span className="message-time">{formatTime(message.timestamp)}</span>
+        <span className="message-time">{formatTimestamp(message.timestamp)}</span>
       </div>
       
       <div className="message-content">
-        {isError ? (
-          <div className="error-content">{message.content}</div>
-        ) : (
-          <div 
-            className="text-content"
-            dangerouslySetInnerHTML={highlightContent(message.content)}
-          />
-        )}
+        {renderContent()}
       </div>
       
-      {hasAttention && (
-        <div className="attention-indicator">
-          <span className="attention-icon">👁️</span>
-          <span className="attention-text">{message.attention_focus}</span>
+      {detectedActions.length > 0 && !isUser && (
+        <div className="message-actions">
+          <span className="actions-label">Actions detected:</span>
+          <div className="action-tags">
+            {detectedActions.map(action => (
+              <span key={action} className={`action-tag ${action}`}>
+                <span className="action-icon">{getActionIcon(action)}</span>
+                {action}
+              </span>
+            ))}
+          </div>
         </div>
       )}
       
-      {actions.length > 0 && (
-        <motion.div 
-          className="action-indicators"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: showActions ? 1 : 0.5 }}
+      {message.thinking && (
+        <motion.div
+          className="thinking-content"
+          initial={{ height: 0 }}
+          animate={{ height: isExpanded ? 'auto' : 0 }}
         >
-          {actions.map((action, index) => (
-            <span key={index} className={`action-badge ${action.type}`}>
-              <span className="action-icon">{action.icon}</span>
-              <span className="action-type">{action.type}</span>
-            </span>
-          ))}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="thinking-toggle"
+          >
+            {isExpanded ? 'Hide' : 'Show'} thinking process
+          </button>
+          {isExpanded && (
+            <div className="thinking-text">
+              {message.thinking}
+            </div>
+          )}
         </motion.div>
       )}
       
-      {hasThinking && (
-        <div className="thinking-section">
-          <button
-            className="thinking-toggle"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            <span className="toggle-icon">{isExpanded ? '▼' : '▶'}</span>
-            <span className="toggle-text">Extended Thinking</span>
-            <span className="thinking-badge">🧠</span>
-          </button>
-          
-          <motion.div
-            initial={false}
-            animate={{ height: isExpanded ? 'auto' : 0 }}
-            transition={{ duration: 0.3 }}
-            className="thinking-content"
-          >
-            <div className="thinking-inner">
-              {message.thinking}
-            </div>
-          </motion.div>
+      {message.attention_focus && !isUser && (
+        <div className="attention-display">
+          <span className="attention-label">Attention:</span>
+          <span className="attention-focus">{message.attention_focus}</span>
         </div>
       )}
       
       <style jsx>{`
         .message-bubble {
-          margin: 12px 0;
-          padding: 16px;
-          border-radius: 12px;
-          position: relative;
-          transition: all 0.2s ease;
+          margin-bottom: 16px;
+          animation: fadeInUp 0.3s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         
         .message-bubble.user {
-          background: linear-gradient(135deg, #1a3a52 0%, #0a2940 100%);
-          margin-left: 20%;
-          border: 1px solid rgba(0, 168, 255, 0.2);
+          margin-left: auto;
+          max-width: 70%;
         }
         
         .message-bubble.assistant {
-          background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
-          margin-right: 20%;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          margin-right: auto;
+          max-width: 80%;
         }
         
         .message-bubble.error {
-          background: linear-gradient(135deg, #3a1a1a 0%, #2a0a0a 100%);
-          border: 1px solid rgba(255, 0, 102, 0.3);
+          margin-right: auto;
+          max-width: 80%;
         }
         
-        .message-bubble:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        .message-bubble.thinking {
+          margin-right: auto;
+          max-width: 80%;
+          opacity: 0.7;
         }
         
         .message-header {
@@ -169,198 +224,242 @@ const MessageBubble = ({ message }) => {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 8px;
-          font-size: 12px;
-          color: #888;
+          padding: 0 4px;
         }
         
         .message-role {
-          display: flex;
-          align-items: center;
-          gap: 4px;
+          font-size: 12px;
           font-weight: 600;
+          color: #888;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        .message-bubble.user .message-role {
+          color: #00a8ff;
+        }
+        
+        .message-bubble.error .message-role {
+          color: #ff0066;
         }
         
         .message-time {
+          font-size: 11px;
           color: #666;
         }
         
         .message-content {
-          color: #e0e0e0;
+          padding: 16px;
+          background: #1a1a1a;
+          border-radius: 12px;
+          border: 1px solid #333;
+        }
+        
+        .message-bubble.user .message-content {
+          background: linear-gradient(135deg, #0a4d8a 0%, #0a3d6a 100%);
+          border-color: #0a5d9a;
+        }
+        
+        .message-bubble.error .message-content {
+          background: rgba(255, 0, 102, 0.1);
+          border-color: rgba(255, 0, 102, 0.3);
+        }
+        
+        .message-paragraph {
+          margin: 0 0 12px 0;
           line-height: 1.6;
-          word-wrap: break-word;
+          color: #e0e0e0;
         }
         
-        .text-content {
-          white-space: pre-wrap;
+        .message-paragraph:last-child {
+          margin-bottom: 0;
         }
         
-        /* Action highlights */
-        .action-memory {
-          background: rgba(0, 255, 136, 0.1);
-          color: #00ff88;
-          padding: 2px 4px;
-          border-radius: 4px;
-          font-weight: 500;
+        .message-list {
+          margin: 0 0 12px 0;
+          padding-left: 20px;
         }
         
-        .action-recall {
-          background: rgba(0, 168, 255, 0.1);
-          color: #00a8ff;
-          padding: 2px 4px;
-          border-radius: 4px;
-          font-weight: 500;
+        .message-list li {
+          margin-bottom: 6px;
+          color: #e0e0e0;
+          line-height: 1.5;
         }
         
-        .action-emotion {
-          background: rgba(255, 0, 170, 0.1);
-          color: #ff00aa;
-          padding: 2px 4px;
-          border-radius: 4px;
-          font-weight: 500;
-        }
-        
-        .action-thinking {
-          background: rgba(255, 170, 0, 0.1);
-          color: #ffaa00;
-          padding: 2px 4px;
-          border-radius: 4px;
-          font-weight: 500;
-        }
-        
-        .action-focus {
-          background: rgba(138, 43, 226, 0.1);
-          color: #8a2be2;
-          padding: 2px 4px;
-          border-radius: 4px;
-          font-weight: 500;
-        }
-        
-        .attention-indicator {
-          margin-top: 12px;
-          padding: 8px 12px;
-          background: rgba(0, 168, 255, 0.1);
-          border: 1px solid rgba(0, 168, 255, 0.2);
+        .code-block {
+          margin: 0 0 12px 0;
+          background: #0a0a0a;
+          border: 1px solid #333;
           border-radius: 8px;
+          overflow: hidden;
+        }
+        
+        .code-header {
           display: flex;
+          justify-content: space-between;
           align-items: center;
-          gap: 8px;
+          padding: 8px 12px;
+          background: #252525;
+          border-bottom: 1px solid #333;
+        }
+        
+        .code-language {
           font-size: 12px;
           color: #00a8ff;
+          font-weight: 600;
         }
         
-        .attention-icon {
-          font-size: 16px;
+        .copy-button {
+          padding: 4px 8px;
+          background: #333;
+          border: none;
+          border-radius: 4px;
+          color: #888;
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.2s;
         }
         
-        .action-indicators {
+        .copy-button:hover {
+          background: #444;
+          color: #e0e0e0;
+        }
+        
+        .code-block code {
+          display: block;
+          padding: 12px;
+          font-family: 'SF Mono', Consolas, monospace;
+          font-size: 13px;
+          line-height: 1.5;
+          color: #e0e0e0;
+          overflow-x: auto;
+        }
+        
+        .inline-code {
+          padding: 2px 6px;
+          background: rgba(0, 168, 255, 0.1);
+          border: 1px solid rgba(0, 168, 255, 0.2);
+          border-radius: 4px;
+          font-family: 'SF Mono', Consolas, monospace;
+          font-size: 0.9em;
+          color: #00a8ff;
+        }
+        
+        .message-actions {
           margin-top: 12px;
+          padding: 12px;
+          background: rgba(0, 168, 255, 0.05);
+          border-radius: 8px;
+          border: 1px solid rgba(0, 168, 255, 0.1);
+        }
+        
+        .actions-label {
+          display: block;
+          font-size: 11px;
+          color: #888;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 8px;
+        }
+        
+        .action-tags {
           display: flex;
           flex-wrap: wrap;
           gap: 6px;
         }
         
-        .action-badge {
+        .action-tag {
           display: inline-flex;
           align-items: center;
           gap: 4px;
-          padding: 4px 8px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 4px 10px;
+          background: #252525;
+          border: 1px solid #333;
           border-radius: 12px;
-          font-size: 11px;
-          color: #888;
-          transition: all 0.2s;
+          font-size: 12px;
+          color: #a0a0a0;
         }
         
-        .action-badge:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #e0e0e0;
-        }
-        
-        .action-badge.memory {
-          border-color: rgba(0, 255, 136, 0.3);
+        .action-tag.memory {
+          border-color: #00ff88;
           color: #00ff88;
         }
         
-        .action-badge.recall {
-          border-color: rgba(0, 168, 255, 0.3);
-          color: #00a8ff;
-        }
-        
-        .action-badge.emotion {
-          border-color: rgba(255, 0, 170, 0.3);
+        .action-tag.emotion {
+          border-color: #ff00aa;
           color: #ff00aa;
         }
         
-        .action-badge.thinking {
-          border-color: rgba(255, 170, 0, 0.3);
+        .action-tag.goal {
+          border-color: #ffaa00;
           color: #ffaa00;
         }
         
-        .action-badge.focus {
-          border-color: rgba(138, 43, 226, 0.3);
-          color: #8a2be2;
+        .action-tag.attention {
+          border-color: #00a8ff;
+          color: #00a8ff;
+        }
+        
+        .action-tag.learning {
+          border-color: #aa00ff;
+          color: #aa00ff;
         }
         
         .action-icon {
           font-size: 14px;
         }
         
-        .thinking-section {
-          margin-top: 12px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-          padding-top: 12px;
-        }
-        
-        .thinking-toggle {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: none;
-          border: none;
-          color: #888;
-          font-size: 12px;
-          cursor: pointer;
-          padding: 4px 8px;
-          margin: -4px -8px;
-          border-radius: 6px;
-          transition: all 0.2s;
-          width: 100%;
-          text-align: left;
-        }
-        
-        .thinking-toggle:hover {
-          background: rgba(255, 255, 255, 0.05);
-          color: #e0e0e0;
-        }
-        
-        .toggle-icon {
-          font-size: 10px;
-          transition: transform 0.2s;
-        }
-        
-        .thinking-badge {
-          margin-left: auto;
-          font-size: 16px;
-        }
-        
         .thinking-content {
+          margin-top: 12px;
           overflow: hidden;
         }
         
-        .thinking-inner {
-          padding: 12px;
+        .thinking-toggle {
+          padding: 6px 12px;
+          background: #252525;
+          border: 1px solid #333;
+          border-radius: 6px;
+          color: #888;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .thinking-toggle:hover {
+          background: #333;
+          color: #e0e0e0;
+        }
+        
+        .thinking-text {
           margin-top: 8px;
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 12px;
+          background: rgba(108, 92, 231, 0.05);
+          border: 1px solid rgba(108, 92, 231, 0.1);
           border-radius: 8px;
           font-size: 13px;
           color: #a0a0a0;
-          line-height: 1.6;
+          line-height: 1.5;
+          font-style: italic;
         }
         
-        .error-content {
-          color: #ff6666;
+        .attention-display {
+          margin-top: 8px;
+          padding: 8px 12px;
+          background: rgba(0, 168, 255, 0.05);
+          border-radius: 6px;
+          font-size: 12px;
+        }
+        
+        .attention-label {
+          color: #888;
+          font-weight: 600;
+          margin-right: 8px;
+        }
+        
+        .attention-focus {
+          color: #00a8ff;
+          font-style: italic;
         }
       `}</style>
     </motion.div>
